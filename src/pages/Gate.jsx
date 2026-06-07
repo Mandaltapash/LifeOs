@@ -4,14 +4,15 @@ import { useState, useMemo } from 'react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Clock, Target, Plus, Flame, Award, X, Video, FileText } from 'lucide-react';
+import { BookOpen, Clock, Target, Plus, Flame, Award, X, Video, FileText, Edit3 } from 'lucide-react';
 
 export default function Gate() {
-  const { subjects, progress, mockTests, addStudySession, addMockTest, removeMockTest, getWeeklyStudyHours, updateProgress } = useGateStore();
+  const { subjects, progress, mockTests, addStudySession, addMockTest, removeMockTest, getWeeklyStudyHours, updateProgress, setSubjectProgress } = useGateStore();
   const { gateExamDate } = useAppStore();
 
   const [showLogModal, setShowLogModal] = useState(false);
   const [showMockModal, setShowMockModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Form states
   const [selectedSubject, setSelectedSubject] = useState(subjects[0]?.id || '');
@@ -23,6 +24,15 @@ export default function Gate() {
   const [mockName, setMockName] = useState('');
   const [mockScore, setMockScore] = useState(65);
   const [mockMax, setMockMax] = useState(100);
+
+  // Edit states
+  const [editSubjectId, setEditSubjectId] = useState('');
+  const [editSubjectName, setEditSubjectName] = useState('');
+  const [editHours, setEditHours] = useState(0);
+  const [editPyqs, setEditPyqs] = useState(0);
+  const [editVideos, setEditVideos] = useState(0);
+  const [editRevisions, setEditRevisions] = useState(0);
+  const [editNotes, setEditNotes] = useState(0);
 
   // Exam Countdown
   const daysToGate = useMemo(() => {
@@ -76,6 +86,33 @@ export default function Gate() {
     });
     setMockName('');
     setShowMockModal(false);
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editSubjectId) return;
+    
+    setSubjectProgress(editSubjectId, {
+      hours: Number(editHours),
+      pyqs: Number(editPyqs),
+      videos: Number(editVideos),
+      revisions: Number(editRevisions),
+      notes: Number(editNotes)
+    });
+    
+    setShowEditModal(false);
+  };
+
+  const openEditModal = (subId, subName) => {
+    const p = progress[subId] || { hours: 0, pyqs: 0, videos: 0, revisions: 0, notes: 0 };
+    setEditSubjectId(subId);
+    setEditSubjectName(subName);
+    setEditHours(p.hours || 0);
+    setEditPyqs(p.pyqs || 0);
+    setEditVideos(p.videos || 0);
+    setEditRevisions(p.revisions || 0);
+    setEditNotes(p.notes || 0);
+    setShowEditModal(true);
   };
 
   // Recharts Subject Comparison Data
@@ -163,10 +200,19 @@ export default function Gate() {
               // Cap progress visually at 100
               const progressPct = Math.min(100, Math.round((p.hours / 60) * 100)); // assume 60h per subject target
               return (
-                <div key={sub.id} className="p-4 rounded-xl border border-surface bg-surface-secondary/40 space-y-3">
+                <div key={sub.id} className="p-4 rounded-xl border border-surface bg-surface-secondary/40 space-y-3 relative group">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h4 className="font-semibold text-sm text-fg">{sub.name}</h4>
+                      <h4 className="font-semibold text-sm text-fg flex items-center gap-2">
+                        {sub.name}
+                        <button 
+                          onClick={() => openEditModal(sub.id, sub.name)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-fg-3 hover:text-primary-400"
+                          title="Edit Progress"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </h4>
                       <p className="text-xs text-fg-3">{p.hours || 0} hrs study · {p.pyqs || 0} PYQs</p>
                     </div>
                     <span className="badge text-[10px]" style={{ color: sub.color, backgroundColor: `${sub.color}15` }}>
@@ -195,7 +241,7 @@ export default function Gate() {
             {pieData.length === 0 ? (
               <p className="text-xs text-fg-3 py-10 text-center">Log study sessions to view distribution chart.</p>
             ) : (
-              <div className="h-60 w-full">
+              <div style={{ width: '100%', height: 250, minHeight: 250 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -223,7 +269,7 @@ export default function Gate() {
             {mockTests.length === 0 ? (
               <p className="text-xs text-fg-3 py-10 text-center">Add mock tests to display performance trends.</p>
             ) : (
-              <div className="h-60 w-full">
+              <div style={{ width: '100%', height: 250, minHeight: 250 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={mockTests}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border)" />
@@ -390,6 +436,98 @@ export default function Gate() {
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setShowMockModal(false)} className="btn-ghost">Cancel</button>
                   <button type="submit" className="btn-primary">Save Score</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Subject Progress Modal */}
+      <AnimatePresence>
+        {showEditModal && (
+          <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="modal-content max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-fg">Edit Progress: {editSubjectName}</h3>
+                <button onClick={() => setShowEditModal(false)} className="btn-icon text-fg-3 hover:text-fg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Study Hours</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      required
+                      value={editHours}
+                      onChange={e => setEditHours(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">PYQs Solved</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={editPyqs}
+                      onChange={e => setEditPyqs(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Videos Watched</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={editVideos}
+                      onChange={e => setEditVideos(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Notes Created (Units)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={editNotes}
+                      onChange={e => setEditNotes(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Revisions Completed</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editRevisions}
+                    onChange={e => setEditRevisions(e.target.value)}
+                    className="input"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="btn-ghost">Cancel</button>
+                  <button type="submit" className="btn-primary">Save Changes</button>
                 </div>
               </form>
             </motion.div>

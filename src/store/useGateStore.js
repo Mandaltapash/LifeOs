@@ -36,6 +36,16 @@ export const useGateStore = create(
         }
       })),
 
+      setSubjectProgress: (subjectId, progressObj) => set(s => ({
+        progress: {
+          ...s.progress,
+          [subjectId]: {
+            ...(s.progress[subjectId] || { videos: 0, hours: 0, pyqs: 0, notes: 0, revisions: 0 }),
+            ...progressObj,
+          }
+        }
+      })),
+
       addStudySession: (subjectId, hours) => set(s => {
         const today_ = today();
         const existing = s.studyLog.find(l => l.date === today_ && l.subjectId === subjectId);

@@ -102,6 +102,22 @@ function NotesInner() {
   const editor = useEditor({
     extensions: extensionsList,
     content: selectedNote?.content || '',
+    editorProps: {
+      transformPastedHTML(html) {
+        // Strip inline styles and classes from pasted content so
+        // external fonts/colors don't override the editor's own styling.
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        doc.querySelectorAll('*').forEach(el => {
+          el.removeAttribute('style');
+          el.removeAttribute('class');
+          el.removeAttribute('color');
+          el.removeAttribute('face');
+          el.removeAttribute('size');
+        });
+        return doc.body.innerHTML;
+      },
+    },
     onUpdate: ({ editor }) => {
       if (selectedNoteId) {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -250,7 +266,7 @@ function NotesInner() {
 
       <div className="flex-1 flex flex-col bg-surface rounded-2xl border border-surface-border overflow-hidden">
         {selectedNote ? (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="p-4 border-b border-surface-border flex flex-col gap-3">
               <div className="flex justify-between items-start">
                 <input
