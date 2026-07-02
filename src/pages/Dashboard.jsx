@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recha
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, differenceInDays, differenceInHours, differenceInMinutes, parseISO } from 'date-fns';
 import { useState, useEffect, useMemo } from 'react';
-import { CheckCircle2, Clock, Flame, Target, Zap, Plus, X, Calendar, BookOpen, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, Target, Zap, Plus, X, Calendar, BookOpen, AlertCircle, Edit2 } from 'lucide-react';
 
 const MOTIVATIONAL_QUOTES = [
   { text: "Your limit is only your imagination.", author: "Unknown" },
@@ -23,7 +23,7 @@ const MOTIVATIONAL_QUOTES = [
 ];
 
 export default function Dashboard() {
-  const { settings, gateExamDate } = useAppStore();
+  const { settings, gateExamDate, examName, setGateExamDate, setExamName } = useAppStore();
   const { tasks, getTodayTasks, getPendingCount, getCompletedTodayCount, addTask } = useTodoStore();
   const { habits, completions, toggleHabit, getTodayCompletedCount, getLongestStreak } = useHabitStore();
   const { blocks, getTodayBlocks } = usePlannerStore();
@@ -34,6 +34,25 @@ export default function Dashboard() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState('personal');
+
+  // Edit Countdown states
+  const [showEditCountdown, setShowEditCountdown] = useState(false);
+  const [tempExamName, setTempExamName] = useState(examName || 'GATE');
+  const [tempExamDate, setTempExamDate] = useState(gateExamDate || '2027-02-01');
+
+  const handleOpenEditCountdown = () => {
+    setTempExamName(examName || 'GATE');
+    setTempExamDate(gateExamDate || '2027-02-01');
+    setShowEditCountdown(true);
+  };
+
+  const handleSaveCountdown = (e) => {
+    e.preventDefault();
+    if (!tempExamName.trim() || !tempExamDate) return;
+    setExamName(tempExamName.trim());
+    setGateExamDate(tempExamDate);
+    setShowEditCountdown(false);
+  };
 
   // Rotate quotes every day or on mount
   useEffect(() => {
@@ -116,16 +135,32 @@ export default function Dashboard() {
     setShowQuickAdd(false);
   };
 
-  // Mock weekly activity for chart
-  const weeklyActivityData = [
-    { name: 'Mon', completed: 4 },
-    { name: 'Tue', completed: 6 },
-    { name: 'Wed', completed: 5 },
-    { name: 'Thu', completed: 8 },
-    { name: 'Fri', completed: 3 },
-    { name: 'Sat', completed: 7 },
-    { name: 'Sun', completed: tasksCompletedToday },
-  ];
+  // Weekly activity for chart (actual completed tasks per day for the last 7 days)
+  const weeklyActivityData = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const key = format(d, 'yyyy-MM-dd');
+      
+      const count = tasks.filter(task => {
+        if (task.status !== 'done' || task.archived || !task.completedAt) return false;
+        try {
+          return format(parseISO(task.completedAt), 'yyyy-MM-dd') === key;
+        } catch (e) {
+          try {
+            return format(new Date(task.completedAt), 'yyyy-MM-dd') === key;
+          } catch (err) {
+            return false;
+          }
+        }
+      }).length;
+      
+      return {
+        name: format(d, 'EEE'),
+        completed: count
+      };
+    });
+  }, [tasks]);
 
   return (
     <div className="space-y-6 page-enter">
@@ -170,9 +205,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Countdown */}
         <div className="card p-6 border-surface flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-surface to-surface-secondary">
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="text-primary-400" size={20} />
-            <h3 className="font-semibold text-fg">GATE Exam Countdown</h3>
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="text-primary-400" size={20} />
+              <h3 className="font-semibold text-fg">{examName || 'GATE'} Exam Countdown</h3>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenEditCountdown}
+              className="p-1 hover:bg-surface-border text-fg-3 hover:text-fg rounded-md transition-colors cursor-pointer"
+              title="Edit Countdown"
+            >
+              <Edit2 size={14} />
+            </button>
           </div>
           <div className="flex gap-4 justify-center py-4">
             <div className="flex flex-col items-center">
@@ -389,6 +434,55 @@ export default function Dashboard() {
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setShowQuickAdd(false)} className="btn-ghost">Cancel</button>
                   <button type="submit" className="btn-primary">Add Task</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {showEditCountdown && (
+          <div className="modal-overlay" onClick={() => setShowEditCountdown(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-fg">Edit Countdown Goal</h3>
+                <button onClick={() => setShowEditCountdown(false)} className="btn-icon text-fg-3 hover:text-fg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCountdown} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Exam / Goal Name</label>
+                  <input
+                    autoFocus
+                    required
+                    value={tempExamName}
+                    onChange={e => setTempExamName(e.target.value)}
+                    placeholder="E.g. GATE, CBSE, GRE, Launch"
+                    className="input"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Target Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={tempExamDate}
+                    onChange={e => setTempExamDate(e.target.value)}
+                    className="input font-mono"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowEditCountdown(false)} className="btn-ghost">Cancel</button>
+                  <button type="submit" className="btn-primary">Save Changes</button>
                 </div>
               </form>
             </motion.div>

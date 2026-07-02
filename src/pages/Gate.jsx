@@ -8,7 +8,7 @@ import { BookOpen, Clock, Target, Plus, Flame, Award, X, Video, FileText, Edit3 
 
 export default function Gate() {
   const { subjects, progress, mockTests, addStudySession, addMockTest, removeMockTest, getWeeklyStudyHours, updateProgress, setSubjectProgress } = useGateStore();
-  const { gateExamDate } = useAppStore();
+  const { gateExamDate, examName } = useAppStore();
 
   const [showLogModal, setShowLogModal] = useState(false);
   const [showMockModal, setShowMockModal] = useState(false);
@@ -141,8 +141,8 @@ export default function Gate() {
       <div className="relative rounded-3xl bg-gradient-to-r from-purple-900 to-indigo-900 p-8 text-white border border-indigo-800 shadow-glow-primary">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="space-y-2">
-            <span className="badge badge-purple">GATE preparation system</span>
-            <h1 className="text-3xl font-extrabold tracking-tight">GATE CS 2027 Dashboard</h1>
+            <span className="badge badge-purple">{examName || 'GATE'} preparation system</span>
+            <h1 className="text-3xl font-extrabold tracking-tight">{examName || 'GATE'} Dashboard</h1>
             <p className="text-slate-300">Track subject syllabus, revisions, practice tests, and total study hours.</p>
           </div>
           <div className="flex items-center gap-6 bg-black/30 px-6 py-4 rounded-2xl border border-white/5 backdrop-blur-md">

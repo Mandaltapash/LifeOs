@@ -7,7 +7,8 @@ export const useAppStore = create(
       theme: 'dark',
       sidebarCollapsed: false,
       gateExamDate: '2027-02-01',
-      geminiApiKey: '',
+      examName: 'GATE',
+      geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
       settings: {
         name: 'Tapash',
         greeting: true,
@@ -28,6 +29,7 @@ export const useAppStore = create(
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
       setGateExamDate: (date) => set({ gateExamDate: date }),
+      setExamName: (name) => set({ examName: name }),
       setGeminiApiKey: (key) => set({ geminiApiKey: key }),
       updateSettings: (settings) => set(s => ({ settings: { ...s.settings, ...settings } })),
     }),

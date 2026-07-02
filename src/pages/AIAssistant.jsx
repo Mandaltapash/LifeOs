@@ -1,7 +1,7 @@
 import { useAppStore } from '../store/useAppStore';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Copy, Key, Sparkles, X, Check } from 'lucide-react';
+import { Send, Bot, User, Copy, Key, Sparkles, X, Check, Eye, EyeOff } from 'lucide-react';
 
 export default function AIAssistant() {
   const { geminiApiKey, setGeminiApiKey } = useAppStore();
@@ -14,10 +14,21 @@ export default function AIAssistant() {
   ]);
   const [inputText, setInputText] = useState('');
   const [showKeyModal, setShowKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey || '');
+  const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!geminiApiKey) {
+      const defaultKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+      if (defaultKey) {
+        setGeminiApiKey(defaultKey);
+        setApiKeyInput(defaultKey);
+      }
+    }
+  }, [geminiApiKey, setGeminiApiKey]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,7 +67,7 @@ They track: GATE study (10 subjects), daily coding (DSA+Python), fitness (gym/wa
 Give concise, actionable, motivating responses. Use bullet points and structure. Output in clear markdown format.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -138,7 +149,7 @@ To crack top roles and build CollegeX efficiently:
         </div>
         <button
           onClick={() => {
-            setApiKeyInput(geminiApiKey);
+            setApiKeyInput(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
             setShowKeyModal(true);
           }}
           className={`btn ${geminiApiKey ? 'btn-secondary' : 'btn-primary'}`}
@@ -251,14 +262,24 @@ To crack top roles and build CollegeX efficiently:
                 </p>
                 <div>
                   <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">API Key</label>
-                  <input
-                    type="password"
-                    autoFocus
-                    value={apiKeyInput}
-                    onChange={e => setApiKeyInput(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="input font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      autoFocus
+                      value={apiKeyInput}
+                      onChange={e => setApiKeyInput(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="input font-mono pr-10 w-full"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg"
+                      title={showApiKey ? "Hide API Key" : "Show API Key"}
+                    >
+                      {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">

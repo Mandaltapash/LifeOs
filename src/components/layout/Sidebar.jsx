@@ -5,26 +5,27 @@ import {
   Target, Timer, FileText, TrendingUp, Star, MessageSquareMore,
   ChevronLeft, ChevronRight, Zap, ClipboardList
 } from 'lucide-react';
+import { useMemo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/planner', label: 'Daily Planner', icon: Calendar },
-  { path: '/todos', label: 'To-Do', icon: CheckSquare },
-  { path: '/gate', label: 'GATE Prep', icon: BookOpen },
-  { path: '/coding', label: 'Coding', icon: Code2 },
-  { path: '/fitness', label: 'Fitness', icon: Dumbbell },
-  { path: '/habits', label: 'Habits', icon: Target },
-  { path: '/pomodoro', label: 'Pomodoro', icon: Timer },
-  { path: '/notes', label: 'Notes', icon: FileText },
-  { path: '/goals', label: 'Goals', icon: Star },
-  { path: '/review', label: 'Daily Review', icon: ClipboardList },
-  { path: '/analytics', label: 'Analytics', icon: TrendingUp },
-  { path: '/ai', label: 'AI Assistant', icon: MessageSquareMore },
-];
-
 export default function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar } = useAppStore();
+  const { sidebarCollapsed, toggleSidebar, examName } = useAppStore();
+
+  const navItems = useMemo(() => [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/planner', label: 'Daily Planner', icon: Calendar },
+    { path: '/todos', label: 'To-Do', icon: CheckSquare },
+    { path: '/gate', label: `${examName || 'GATE'} Prep`, icon: BookOpen },
+    { path: '/coding', label: 'Coding', icon: Code2 },
+    { path: '/fitness', label: 'Fitness', icon: Dumbbell },
+    { path: '/habits', label: 'Habits', icon: Target },
+    { path: '/pomodoro', label: 'Pomodoro', icon: Timer },
+    { path: '/notes', label: 'Notes', icon: FileText },
+    { path: '/goals', label: 'Goals', icon: Star },
+    { path: '/review', label: 'Daily Review', icon: ClipboardList },
+    { path: '/analytics', label: 'Analytics', icon: TrendingUp },
+    { path: '/ai', label: 'AI Assistant', icon: MessageSquareMore },
+  ], [examName]);
 
   return (
     <motion.aside
