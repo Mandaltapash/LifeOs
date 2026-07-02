@@ -1,5 +1,7 @@
 # 🚀 LifeOS - Your Ultimate Personal Productivity Workspace
 
+### 🔗 Live Demo: [https://life-os-nine-gamma.vercel.app/](https://life-os-nine-gamma.vercel.app/)
+
 LifeOS is a modern, responsive, and feature-rich personal dashboard built with **React**, **Vite**, and **Tailwind CSS**. It is designed to help students, developers, and creators manage their schedules, track habits, review progress, build coding skills, and prepare for major exams (like GATE) with an integrated AI study assistant.
 
 All your data is stored locally in your browser's `localStorage` via Zustand persist middleware. This means **your data never leaves your machine**—it is completely private, secure, and isolated to your device. If you share this project with friends, they will see their own fresh progress and tasks without ever seeing yours!
