@@ -265,8 +265,10 @@ body {
   /* TipTap editor */
   .ProseMirror {
     outline: none;
-    min-height: 200px;
     color: var(--text-primary);
+  }
+  .ProseMirror[contenteditable="true"] {
+    min-height: 200px;
   }
   .ProseMirror p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
