@@ -34,6 +34,7 @@ import {
   Dumbbell,
   GraduationCap,
   User,
+  Copy,
 } from 'lucide-react';
 import { usePlannerStore } from '../store/usePlannerStore';
 
@@ -141,7 +142,7 @@ const defaultForm = {
 
 // ─── SortableBlock ─────────────────────────────────────────────────────────────
 
-function SortableBlock({ block, dateKey, onEdit, onDelete, onToggle }) {
+function SortableBlock({ block, dateKey, onEdit, onDelete, onToggle, onCopy }) {
   const {
     attributes,
     listeners,
@@ -245,6 +246,13 @@ function SortableBlock({ block, dateKey, onEdit, onDelete, onToggle }) {
         {/* Actions (visible on hover) */}
         <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           <button
+            onClick={() => onCopy && onCopy(block, dateKey)}
+            className="btn-icon hover:bg-white/5 text-fg-3 hover:text-indigo-400"
+            title="Copy to other days"
+          >
+            <Copy size={14} />
+          </button>
+          <button
             onClick={() => onEdit(block)}
             className="btn-icon hover:bg-white/5 text-fg-3 hover:text-indigo-400"
             title="Edit"
@@ -277,22 +285,47 @@ function TimelineLabel({ time }) {
 
 // ─── BlockModal ────────────────────────────────────────────────────────────────
 
-function BlockModal({ isOpen, onClose, onSave, editingBlock }) {
+function BlockModal({ isOpen, onClose, onSave, editingBlock, targetDateKey, weekDays }) {
   const isEdit = !!editingBlock;
-  const [form, setForm] = useState(editingBlock ? {
+  const [form, setForm] = useState(() => (editingBlock ? {
     title: editingBlock.title,
     time: editingBlock.time,
     endTime: editingBlock.endTime,
     category: editingBlock.category,
     priority: editingBlock.priority,
     description: editingBlock.description || '',
-  } : { ...defaultForm });
+  } : { ...defaultForm }));
+
+  const [selectedDates, setSelectedDates] = useState(() => (targetDateKey ? [targetDateKey] : []));
 
   const set = useCallback((k, v) => setForm((f) => ({ ...f, [k]: v })), []);
 
+  const toggleDate = (dKey) => {
+    setSelectedDates((prev) =>
+      prev.includes(dKey)
+        ? (prev.length > 1 ? prev.filter((k) => k !== dKey) : prev)
+        : [...prev, dKey]
+    );
+  };
+
+  const selectOnlyCurrent = () => {
+    if (targetDateKey) setSelectedDates([targetDateKey]);
+  };
+
+  const selectAllWeekdays = () => {
+    if (!weekDays) return;
+    setSelectedDates(weekDays.slice(0, 5).map((d) => formatDate(d)));
+  };
+
+  const selectAllWeek = () => {
+    if (!weekDays) return;
+    setSelectedDates(weekDays.map((d) => formatDate(d)));
+  };
+
   const handleSave = () => {
     if (!form.title.trim()) return;
-    onSave(form);
+    const dates = selectedDates.length > 0 ? selectedDates : [targetDateKey];
+    onSave(form, dates);
     onClose();
   };
 
@@ -320,7 +353,7 @@ function BlockModal({ isOpen, onClose, onSave, editingBlock }) {
                   {isEdit ? 'Edit Time Block' : 'Add Time Block'}
                 </h2>
                 <p className="text-xs text-fg-3 mt-0.5">
-                  {isEdit ? 'Update the details of this block' : 'Plan a focused work session'}
+                  {isEdit ? 'Update details or repeat on other days' : 'Plan a focused work session'}
                 </p>
               </div>
               <button
@@ -425,11 +458,83 @@ function BlockModal({ isOpen, onClose, onSave, editingBlock }) {
                 <label className="block text-xs font-medium text-fg-2 mb-1.5">Description</label>
                 <textarea
                   className="input resize-none"
-                  rows={3}
+                  rows={2}
                   placeholder="Optional notes or goals for this session…"
                   value={form.description}
                   onChange={(e) => set('description', e.target.value)}
                 />
+              </div>
+
+              {/* Apply to Days (Repeat / Multi-day option) */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-fg-2">
+                    {isEdit ? 'Apply to Days of Week' : 'Apply to Days of Week'}
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={selectOnlyCurrent}
+                      className="text-fg-3 hover:text-indigo-400 transition-colors"
+                    >
+                      Only this day
+                    </button>
+                    <span className="text-fg-3">•</span>
+                    <button
+                      type="button"
+                      onClick={selectAllWeekdays}
+                      className="text-fg-3 hover:text-indigo-400 transition-colors"
+                    >
+                      Mon-Fri
+                    </button>
+                    <span className="text-fg-3">•</span>
+                    <button
+                      type="button"
+                      onClick={selectAllWeek}
+                      className="text-fg-3 hover:text-indigo-400 transition-colors"
+                    >
+                      All 7 days
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className="grid grid-cols-7 gap-1.5 p-2 rounded-xl border"
+                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--surface-border)' }}
+                >
+                  {weekDays?.map((d) => {
+                    const dKey = formatDate(d);
+                    const isSelected = selectedDates.includes(dKey);
+                    const isTarget = dKey === targetDateKey;
+                    return (
+                      <button
+                        type="button"
+                        key={dKey}
+                        onClick={() => toggleDate(dKey)}
+                        className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all duration-150 text-xs ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                            : 'hover:bg-white/5 text-fg-3 hover:text-fg'
+                        }`}
+                      >
+                        <span className="text-[10px] uppercase tracking-wider">{format(d, 'EEE')}</span>
+                        <span className="text-xs font-bold mt-0.5">{format(d, 'd')}</span>
+                        {isTarget && (
+                          <span
+                            className={`w-1 h-1 rounded-full mt-0.5 ${isSelected ? 'bg-white' : 'bg-indigo-400'}`}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedDates.length > 1 && (
+                  <p className="text-[11px] text-indigo-400 mt-1.5 flex items-center gap-1">
+                    <Check size={12} />
+                    Will be added to {selectedDates.length} days this week
+                  </p>
+                )}
               </div>
             </div>
 
@@ -437,8 +542,274 @@ function BlockModal({ isOpen, onClose, onSave, editingBlock }) {
             <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-surface">
               <button onClick={onClose} className="btn-ghost">Cancel</button>
               <button onClick={handleSave} className="btn-primary" disabled={!form.title.trim()}>
-                {isEdit ? 'Save Changes' : 'Add Block'}
+                {isEdit ? 'Save Changes' : (selectedDates.length > 1 ? `Add to ${selectedDates.length} Days` : 'Add Block')}
               </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ─── CopyScheduleModal ────────────────────────────────────────────────────────
+
+function CopyScheduleModal({
+  isOpen,
+  onClose,
+  mode,
+  sourceDate,
+  sourceBlock,
+  sourceBlocksCount,
+  weekDays,
+  existingBlocks,
+  onConfirm,
+}) {
+  const [selectedDays, setSelectedDays] = useState([]);
+  const [overwrite, setOverwrite] = useState(false);
+
+  const toggleDay = (dKey) => {
+    if (dKey === sourceDate) return;
+    setSelectedDays((prev) =>
+      prev.includes(dKey) ? prev.filter((k) => k !== dKey) : [...prev, dKey]
+    );
+  };
+
+  const selectAllOtherDays = () => {
+    if (!weekDays) return;
+    setSelectedDays(weekDays.map((d) => formatDate(d)).filter((k) => k !== sourceDate));
+  };
+
+  const selectWeekdays = () => {
+    if (!weekDays) return;
+    setSelectedDays(
+      weekDays.slice(0, 5).map((d) => formatDate(d)).filter((k) => k !== sourceDate)
+    );
+  };
+
+  const selectWeekend = () => {
+    if (!weekDays) return;
+    setSelectedDays(
+      weekDays.slice(5, 7).map((d) => formatDate(d)).filter((k) => k !== sourceDate)
+    );
+  };
+
+  const clearSelection = () => {
+    setSelectedDays([]);
+  };
+
+  const handleConfirm = () => {
+    if (selectedDays.length === 0) return;
+    onConfirm({ targetDates: selectedDays, overwrite });
+  };
+
+  const sourceDayFormatted = sourceDate
+    ? format(parseISO(sourceDate), 'EEEE, MMM d')
+    : '';
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={(e) => e.target === e.currentTarget && onClose()}
+        >
+          <motion.div
+            className="modal-content max-w-lg"
+            initial={{ opacity: 0, scale: 0.95, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 24 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-indigo-400"
+                  style={{ background: 'var(--surface-border)' }}
+                >
+                  <Copy size={18} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-fg">
+                    {mode === 'day' ? 'Copy Day Schedule' : 'Copy Time Block'}
+                  </h2>
+                  <p className="text-xs text-fg-3 mt-0.5">
+                    {mode === 'day'
+                      ? `Duplicate ${sourceBlocksCount} task${sourceBlocksCount !== 1 ? 's' : ''} from ${sourceDayFormatted}`
+                      : `Duplicate "${sourceBlock?.title}" (${sourceBlock?.time} - ${sourceBlock?.endTime})`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="btn-icon hover:bg-white/5 text-fg-3 hover:text-fg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Presets row */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-fg-2">Choose destination days:</span>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={selectAllOtherDays}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    All Days
+                  </button>
+                  <span className="text-fg-3">•</span>
+                  <button
+                    type="button"
+                    onClick={selectWeekdays}
+                    className="text-xs text-fg-3 hover:text-indigo-400 transition-colors"
+                  >
+                    Weekdays
+                  </button>
+                  <span className="text-fg-3">•</span>
+                  <button
+                    type="button"
+                    onClick={selectWeekend}
+                    className="text-xs text-fg-3 hover:text-indigo-400 transition-colors"
+                  >
+                    Weekend
+                  </button>
+                  {selectedDays.length > 0 && (
+                    <>
+                      <span className="text-fg-3">•</span>
+                      <button
+                        type="button"
+                        onClick={clearSelection}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Day selection grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {weekDays?.map((d) => {
+                  const dKey = formatDate(d);
+                  const isSource = dKey === sourceDate;
+                  const isSelected = selectedDays.includes(dKey);
+                  const blocksOnDay = existingBlocks[dKey] || [];
+
+                  return (
+                    <button
+                      key={dKey}
+                      type="button"
+                      disabled={isSource}
+                      onClick={() => toggleDay(dKey)}
+                      className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
+                        isSource
+                          ? 'opacity-40 cursor-not-allowed border-surface'
+                          : isSelected
+                          ? 'bg-indigo-600/15 border-indigo-500/60 ring-1 ring-indigo-500/30'
+                          : 'border-surface hover:bg-white/5'
+                      }`}
+                      style={{ background: isSelected ? undefined : 'var(--bg-secondary)' }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected
+                              ? 'bg-indigo-600 border-indigo-500 text-white'
+                              : 'border-[var(--surface-border)]'
+                          }`}
+                        >
+                          {isSelected && <Check size={11} strokeWidth={3} />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-semibold truncate ${isSelected ? 'text-indigo-300' : 'text-fg'}`}>
+                            {format(d, 'EEEE')}
+                          </p>
+                          <p className="text-[10px] text-fg-3">
+                            {format(d, 'MMM d')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        {isSource ? (
+                          <span className="badge text-[10px] bg-white/5 text-fg-3">
+                            Source Day
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-fg-3">
+                            {blocksOnDay.length > 0
+                              ? `${blocksOnDay.length} task${blocksOnDay.length > 1 ? 's' : ''}`
+                              : 'Empty'}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Mode options for day schedule copy */}
+              {mode === 'day' && (
+                <div
+                  className="p-3.5 rounded-xl border border-surface space-y-2"
+                  style={{ background: 'var(--surface-primary)' }}
+                >
+                  <p className="text-xs font-medium text-fg-2">Copy Mode:</p>
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs text-fg">
+                    <input
+                      type="radio"
+                      name="copyMode"
+                      checked={!overwrite}
+                      onChange={() => setOverwrite(false)}
+                      className="text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>
+                      <strong>Append</strong> to target days (preserves existing tasks, adds copied ones)
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs text-fg">
+                    <input
+                      type="radio"
+                      name="copyMode"
+                      checked={overwrite}
+                      onChange={() => setOverwrite(true)}
+                      className="text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>
+                      <strong>Replace</strong> target days (clears existing tasks and sets this schedule)
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-surface">
+              <span className="text-xs text-fg-3">
+                {selectedDays.length} destination day{selectedDays.length !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-ghost">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={selectedDays.length === 0}
+                  className="btn-primary"
+                >
+                  <Copy size={14} />
+                  Copy {mode === 'day' ? 'Schedule' : 'Block'}
+                </button>
+              </div>
             </div>
           </motion.div>
         </motion.div>
@@ -449,7 +820,7 @@ function BlockModal({ isOpen, onClose, onSave, editingBlock }) {
 
 // ─── WeekDayColumn ─────────────────────────────────────────────────────────────
 
-function WeekDayColumn({ date, blocks, onAddClick }) {
+function WeekDayColumn({ date, blocks, onAddClick, onCopyDay, onCopyBlock }) {
   const isCurrentDay = isToday(date);
   const dateKey = formatDate(date);
 
@@ -462,7 +833,7 @@ function WeekDayColumn({ date, blocks, onAddClick }) {
     >
       {/* Column header */}
       <div
-        className={`px-3 py-2.5 text-center border-b ${isCurrentDay ? 'bg-indigo-600/10' : ''}`}
+        className={`px-3 py-2.5 text-center border-b relative group ${isCurrentDay ? 'bg-indigo-600/10' : ''}`}
         style={{ borderColor: 'var(--surface-border)' }}
       >
         <p className={`text-[10px] font-semibold uppercase tracking-widest ${isCurrentDay ? 'text-indigo-400' : 'text-fg-3'}`}>
@@ -473,6 +844,19 @@ function WeekDayColumn({ date, blocks, onAddClick }) {
         </p>
         {isCurrentDay && (
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mx-auto mt-0.5" />
+        )}
+        {blocks.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopyDay && onCopyDay(dateKey);
+            }}
+            title={`Copy ${format(date, 'EEEE')}'s plan to other days`}
+            className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white/10 text-fg-3 hover:text-indigo-400 transition-all duration-150"
+          >
+            <Copy size={12} />
+          </button>
         )}
       </div>
 
@@ -491,15 +875,28 @@ function WeekDayColumn({ date, blocks, onAddClick }) {
             return (
               <div
                 key={block.id}
-                className={`flex items-start gap-1.5 px-2 py-1.5 rounded-xl border-l-2 text-xs ${cat.bg} ${cat.border} ${block.done ? 'opacity-50' : ''}`}
+                className={`group/b flex items-start justify-between gap-1 px-2 py-1.5 rounded-xl border-l-2 text-xs ${cat.bg} ${cat.border} ${block.done ? 'opacity-50' : ''}`}
               >
-                <div className={`w-1.5 h-1.5 rounded-full ${cat.dot} shrink-0 mt-0.5`} />
-                <div className="min-w-0">
-                  <p className={`font-medium truncate ${cat.text} ${block.done ? 'line-through' : ''}`}>
-                    {block.title}
-                  </p>
-                  <p className="text-fg-3 text-[10px]">{block.time}</p>
+                <div className="flex items-start gap-1.5 min-w-0">
+                  <div className={`w-1.5 h-1.5 rounded-full ${cat.dot} shrink-0 mt-0.5`} />
+                  <div className="min-w-0">
+                    <p className={`font-medium truncate ${cat.text} ${block.done ? 'line-through' : ''}`}>
+                      {block.title}
+                    </p>
+                    <p className="text-fg-3 text-[10px]">{block.time}</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopyBlock && onCopyBlock(block, dateKey);
+                  }}
+                  title="Copy to other days"
+                  className="opacity-0 group-hover/b:opacity-100 p-1 rounded hover:bg-white/10 text-fg-3 hover:text-indigo-400 transition-all shrink-0"
+                >
+                  <Copy size={11} />
+                </button>
               </div>
             );
           })
@@ -524,14 +921,73 @@ function WeekDayColumn({ date, blocks, onAddClick }) {
 // ─── Main Planner Component ────────────────────────────────────────────────────
 
 export default function Planner() {
-  const { blocks, addBlock, updateBlock, deleteBlock, toggleBlock, reorderBlocks } =
-    usePlannerStore();
+  const {
+    blocks,
+    addBlock,
+    addBlockToMultipleDates,
+    copyBlockToDates,
+    copyDayBlocks,
+    updateBlock,
+    deleteBlock,
+    toggleBlock,
+    reorderBlocks,
+  } = usePlannerStore();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState('day'); // 'day' | 'week'
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState(null);
   const [weekAddDate, setWeekAddDate] = useState(null); // for week-view add
+
+  // Copy schedule states
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyConfig, setCopyConfig] = useState({
+    mode: 'day',
+    sourceDate: '',
+    block: null,
+  });
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3200);
+  }, []);
+
+  const openCopyDayModal = useCallback((sDate) => {
+    setCopyConfig({
+      mode: 'day',
+      sourceDate: sDate || formatDate(currentDate),
+      block: null,
+    });
+    setCopyModalOpen(true);
+  }, [currentDate]);
+
+  const openCopyBlockModal = useCallback((block, sDate) => {
+    setCopyConfig({
+      mode: 'block',
+      sourceDate: sDate || formatDate(currentDate),
+      block,
+    });
+    setCopyModalOpen(true);
+  }, [currentDate]);
+
+  const handleConfirmCopy = useCallback(({ targetDates, overwrite }) => {
+    if (!targetDates || targetDates.length === 0) return;
+
+    if (copyConfig.mode === 'day') {
+      copyDayBlocks(copyConfig.sourceDate, targetDates, overwrite);
+      const dayNames = targetDates.map((d) => format(parseISO(d), 'EEE')).join(', ');
+      showToast(`Schedule copied to ${targetDates.length} day${targetDates.length > 1 ? 's' : ''} (${dayNames})!`);
+    } else if (copyConfig.mode === 'block' && copyConfig.block) {
+      copyBlockToDates(copyConfig.sourceDate, copyConfig.block.id, targetDates);
+      const dayNames = targetDates.map((d) => format(parseISO(d), 'EEE')).join(', ');
+      showToast(`"${copyConfig.block.title}" copied to ${targetDates.length} day${targetDates.length > 1 ? 's' : ''} (${dayNames})!`);
+    }
+
+    setCopyModalOpen(false);
+  }, [copyConfig, copyDayBlocks, copyBlockToDates, showToast]);
 
   const dateKey = formatDate(currentDate);
   const dayBlocks = useMemo(() => blocks[dateKey] || [], [blocks, dateKey]);
@@ -567,17 +1023,29 @@ export default function Planner() {
   }, []);
 
   const handleSave = useCallback(
-    (form) => {
+    (form, selectedDates) => {
       if (editingBlock) {
         updateBlock(dateKey, editingBlock.id, form);
+        const otherDates = (selectedDates || []).filter((d) => d !== dateKey);
+        if (otherDates.length > 0) {
+          addBlockToMultipleDates(otherDates, form);
+          showToast(`Updated and added to ${otherDates.length} other day${otherDates.length > 1 ? 's' : ''}!`);
+        }
       } else {
-        const targetDate = weekAddDate || dateKey;
-        addBlock(targetDate, form);
+        const targetDates = selectedDates && selectedDates.length > 0
+          ? selectedDates
+          : [weekAddDate || dateKey];
+        if (targetDates.length === 1) {
+          addBlock(targetDates[0], form);
+        } else {
+          addBlockToMultipleDates(targetDates, form);
+          showToast(`Planned on ${targetDates.length} days of this week!`);
+        }
       }
       setEditingBlock(null);
       setWeekAddDate(null);
     },
-    [editingBlock, dateKey, weekAddDate, addBlock, updateBlock]
+    [editingBlock, dateKey, weekAddDate, addBlock, addBlockToMultipleDates, updateBlock, showToast]
   );
 
   const handleDelete = useCallback(
@@ -601,17 +1069,6 @@ export default function Planner() {
   const totalToday = dayBlocks.length;
   const doneToday = dayBlocks.filter((b) => b.done).length;
   const progressPct = totalToday ? Math.round((doneToday / totalToday) * 100) : 0;
-
-  // Build time markers for timeline
-  const timeMarkers = useMemo(() => {
-    if (dayBlocks.length === 0) return [];
-    const hours = new Set();
-    dayBlocks.forEach((b) => {
-      const h = parseInt(b.time.split(':')[0], 10);
-      hours.add(h);
-    });
-    return [...hours].sort((a, b) => a - b).map((h) => `${String(h).padStart(2, '0')}:00`);
-  }, [dayBlocks]);
 
   // Group blocks by hour for timeline visual
   const blocksGroupedByHour = useMemo(() => {
@@ -750,12 +1207,12 @@ export default function Planner() {
             >
               {/* Day stats mini-bar */}
               {totalToday > 0 && (
-                <div className="flex items-center justify-between mb-5">
-                  <span className="text-xs text-fg-3">
-                    {doneToday}/{totalToday} blocks completed
-                  </span>
-                  <div className="flex items-center gap-2 flex-1 mx-4">
-                    <div className="progress-bar flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="text-xs text-fg-3 whitespace-nowrap">
+                      {doneToday}/{totalToday} blocks completed
+                    </span>
+                    <div className="progress-bar flex-1 max-w-xs">
                       <motion.div
                         className="progress-fill"
                         initial={{ width: 0 }}
@@ -765,6 +1222,15 @@ export default function Planner() {
                     </div>
                     <span className="text-xs font-semibold text-fg-2">{progressPct}%</span>
                   </div>
+
+                  <button
+                    onClick={() => openCopyDayModal(dateKey)}
+                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 self-start sm:self-auto hover:border-indigo-500/50"
+                    title="Copy this day's schedule to other days"
+                  >
+                    <Copy size={13} />
+                    <span>Copy Day Plan</span>
+                  </button>
                 </div>
               )}
 
@@ -835,6 +1301,7 @@ export default function Planner() {
                                     onEdit={openEditModal}
                                     onDelete={handleDelete}
                                     onToggle={handleToggle}
+                                    onCopy={openCopyBlockModal}
                                   />
                                 ))}
                               </div>
@@ -1028,6 +1495,8 @@ export default function Planner() {
                     setView('day');
                     openAddModal(targetKey);
                   }}
+                  onCopyDay={openCopyDayModal}
+                  onCopyBlock={openCopyBlockModal}
                 />
               );
             })}
@@ -1037,6 +1506,7 @@ export default function Planner() {
 
       {/* ── Block Modal ─── */}
       <BlockModal
+        key={`${editingBlock?.id || 'new'}_${weekAddDate || dateKey}_${modalOpen}`}
         isOpen={modalOpen}
         onClose={() => {
           setModalOpen(false);
@@ -1045,7 +1515,45 @@ export default function Planner() {
         }}
         onSave={handleSave}
         editingBlock={editingBlock}
+        targetDateKey={weekAddDate || dateKey}
+        weekDays={weekDays}
       />
+
+      {/* ── Copy Schedule Modal ─── */}
+      <CopyScheduleModal
+        key={`${copyConfig.mode}_${copyConfig.sourceDate}_${copyConfig.block?.id || 'all'}_${copyModalOpen}`}
+        isOpen={copyModalOpen}
+        onClose={() => setCopyModalOpen(false)}
+        mode={copyConfig.mode}
+        sourceDate={copyConfig.sourceDate}
+        sourceBlock={copyConfig.block}
+        sourceBlocksCount={(blocks[copyConfig.sourceDate] || []).length}
+        weekDays={weekDays}
+        existingBlocks={blocks}
+        onConfirm={handleConfirmCopy}
+      />
+
+      {/* ── Toast Notification ─── */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl border shadow-2xl backdrop-blur-xl text-xs font-medium"
+            style={{
+              background: 'var(--surface-primary)',
+              borderColor: 'var(--surface-border)',
+              boxShadow: '0 12px 36px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Check size={12} strokeWidth={3} />
+            </div>
+            <span className="text-fg">{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
