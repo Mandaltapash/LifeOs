@@ -46,6 +46,50 @@ export const useGateStore = create(
         }
       })),
 
+      addSubject: (subject, initialProgress = {}) => set(s => {
+        const id = subject.id || ('sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4));
+        const newSub = {
+          id,
+          name: subject.name ? subject.name.trim() : 'New Subject',
+          color: subject.color || '#6366f1',
+          targetHours: Number(subject.targetHours) || 60,
+        };
+        return {
+          subjects: [...(s.subjects || []), newSub],
+          progress: {
+            ...s.progress,
+            [id]: {
+              videos: Number(initialProgress.videos) || 0,
+              hours: Number(initialProgress.hours) || 0,
+              pyqs: Number(initialProgress.pyqs) || 0,
+              notes: Number(initialProgress.notes) || 0,
+              revisions: Number(initialProgress.revisions) || 0,
+            }
+          }
+        };
+      }),
+
+      updateSubject: (id, subjectUpdates = {}, progressUpdates = {}) => set(s => ({
+        subjects: (s.subjects || []).map(sub => sub.id === id ? { ...sub, ...subjectUpdates } : sub),
+        progress: {
+          ...s.progress,
+          [id]: {
+            ...(s.progress[id] || { videos: 0, hours: 0, pyqs: 0, notes: 0, revisions: 0 }),
+            ...progressUpdates,
+          }
+        }
+      })),
+
+      deleteSubject: (id) => set(s => {
+        const newProgress = { ...s.progress };
+        delete newProgress[id];
+        return {
+          subjects: (s.subjects || []).filter(sub => sub.id !== id),
+          progress: newProgress,
+          studyLog: (s.studyLog || []).filter(log => log.subjectId !== id),
+        };
+      }),
+
       addStudySession: (subjectId, hours) => set(s => {
         const today_ = today();
         const existing = s.studyLog.find(l => l.date === today_ && l.subjectId === subjectId);

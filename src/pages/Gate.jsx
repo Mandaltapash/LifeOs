@@ -4,15 +4,43 @@ import { useState, useMemo } from 'react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Clock, Target, Plus, Flame, Award, X, Video, FileText, Edit3 } from 'lucide-react';
+import { BookOpen, Clock, Target, Plus, Flame, Award, X, Video, FileText, Edit3, Trash2, AlertTriangle } from 'lucide-react';
+
+const PRESET_COLORS = [
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f43f5e',
+  '#f97316',
+  '#f59e0b',
+  '#10b981',
+  '#14b8a6',
+  '#06b6d4',
+  '#3b82f6',
+];
 
 export default function Gate() {
-  const { subjects, progress, mockTests, addStudySession, addMockTest, removeMockTest, getWeeklyStudyHours, updateProgress, setSubjectProgress } = useGateStore();
+  const { 
+    subjects, 
+    progress, 
+    mockTests, 
+    addStudySession, 
+    addMockTest, 
+    removeMockTest, 
+    getWeeklyStudyHours, 
+    updateProgress, 
+    setSubjectProgress,
+    addSubject,
+    updateSubject,
+    deleteSubject
+  } = useGateStore();
   const { gateExamDate, examName } = useAppStore();
 
   const [showLogModal, setShowLogModal] = useState(false);
   const [showMockModal, setShowMockModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Form states
   const [selectedSubject, setSelectedSubject] = useState(subjects[0]?.id || '');
@@ -25,9 +53,21 @@ export default function Gate() {
   const [mockScore, setMockScore] = useState(65);
   const [mockMax, setMockMax] = useState(100);
 
-  // Edit states
+  // Add Subject states
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubColor, setNewSubColor] = useState('#6366f1');
+  const [newSubTargetHours, setNewSubTargetHours] = useState(60);
+  const [newSubHours, setNewSubHours] = useState(0);
+  const [newSubPyqs, setNewSubPyqs] = useState(0);
+  const [newSubVideos, setNewSubVideos] = useState(0);
+  const [newSubNotes, setNewSubNotes] = useState(0);
+  const [newSubRevisions, setNewSubRevisions] = useState(0);
+
+  // Edit Subject states
   const [editSubjectId, setEditSubjectId] = useState('');
   const [editSubjectName, setEditSubjectName] = useState('');
+  const [editSubjectColor, setEditSubjectColor] = useState('#6366f1');
+  const [editTargetHours, setEditTargetHours] = useState(60);
   const [editHours, setEditHours] = useState(0);
   const [editPyqs, setEditPyqs] = useState(0);
   const [editVideos, setEditVideos] = useState(0);
@@ -60,17 +100,18 @@ export default function Gate() {
 
   const handleLogSubmit = (e) => {
     e.preventDefault();
-    if (!selectedSubject) return;
+    const targetSub = subjects.some(s => s.id === selectedSubject) ? selectedSubject : (subjects[0]?.id || '');
+    if (!targetSub) return;
 
     // Log study session hours
-    addStudySession(selectedSubject, Number(sessionHours));
+    addStudySession(targetSub, Number(sessionHours));
 
     // Update cumulative counts for sub values
-    const current = progress[selectedSubject] || { videos: 0, hours: 0, pyqs: 0, notes: 0, revisions: 0 };
-    updateProgress(selectedSubject, 'pyqs', (current.pyqs || 0) + Number(sessionPyqs));
-    updateProgress(selectedSubject, 'videos', (current.videos || 0) + Number(sessionVideos));
-    updateProgress(selectedSubject, 'notes', (current.notes || 0) + (sessionNotes ? 1 : 0));
-    updateProgress(selectedSubject, 'revisions', (current.revisions || 0) + 1);
+    const current = progress[targetSub] || { videos: 0, hours: 0, pyqs: 0, notes: 0, revisions: 0 };
+    updateProgress(targetSub, 'pyqs', (current.pyqs || 0) + Number(sessionPyqs));
+    updateProgress(targetSub, 'videos', (current.videos || 0) + Number(sessionVideos));
+    updateProgress(targetSub, 'notes', (current.notes || 0) + (sessionNotes ? 1 : 0));
+    updateProgress(targetSub, 'revisions', (current.revisions || 0) + 1);
 
     setShowLogModal(false);
   };
@@ -88,31 +129,88 @@ export default function Gate() {
     setShowMockModal(false);
   };
 
-  const handleEditSubmit = (e) => {
-    e.preventDefault();
-    if (!editSubjectId) return;
-    
-    setSubjectProgress(editSubjectId, {
-      hours: Number(editHours),
-      pyqs: Number(editPyqs),
-      videos: Number(editVideos),
-      revisions: Number(editRevisions),
-      notes: Number(editNotes)
-    });
-    
-    setShowEditModal(false);
+  // Add Subject Handlers
+  const openAddModal = () => {
+    setNewSubName('');
+    setNewSubColor(PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]);
+    setNewSubTargetHours(60);
+    setNewSubHours(0);
+    setNewSubPyqs(0);
+    setNewSubVideos(0);
+    setNewSubNotes(0);
+    setNewSubRevisions(0);
+    setShowAddModal(true);
   };
 
-  const openEditModal = (subId, subName) => {
-    const p = progress[subId] || { hours: 0, pyqs: 0, videos: 0, revisions: 0, notes: 0 };
-    setEditSubjectId(subId);
-    setEditSubjectName(subName);
+  const handleAddSubmit = (e) => {
+    e.preventDefault();
+    if (!newSubName.trim()) return;
+
+    addSubject(
+      {
+        name: newSubName.trim(),
+        color: newSubColor,
+        targetHours: Number(newSubTargetHours) || 60,
+      },
+      {
+        hours: Number(newSubHours) || 0,
+        pyqs: Number(newSubPyqs) || 0,
+        videos: Number(newSubVideos) || 0,
+        notes: Number(newSubNotes) || 0,
+        revisions: Number(newSubRevisions) || 0,
+      }
+    );
+
+    setShowAddModal(false);
+  };
+
+  // Edit Subject Handlers
+  const openEditModal = (sub) => {
+    const p = progress[sub.id] || { hours: 0, pyqs: 0, videos: 0, revisions: 0, notes: 0 };
+    setEditSubjectId(sub.id);
+    setEditSubjectName(sub.name);
+    setEditSubjectColor(sub.color || '#6366f1');
+    setEditTargetHours(sub.targetHours || 60);
     setEditHours(p.hours || 0);
     setEditPyqs(p.pyqs || 0);
     setEditVideos(p.videos || 0);
     setEditRevisions(p.revisions || 0);
     setEditNotes(p.notes || 0);
     setShowEditModal(true);
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editSubjectId) return;
+    
+    updateSubject(
+      editSubjectId,
+      {
+        name: editSubjectName.trim(),
+        color: editSubjectColor,
+        targetHours: Number(editTargetHours) || 60,
+      },
+      {
+        hours: Number(editHours) || 0,
+        pyqs: Number(editPyqs) || 0,
+        videos: Number(editVideos) || 0,
+        revisions: Number(editRevisions) || 0,
+        notes: Number(editNotes) || 0,
+      }
+    );
+    
+    setShowEditModal(false);
+  };
+
+  // Delete Subject Handlers
+  const openDeleteModal = (sub) => {
+    setDeleteTarget(sub);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    deleteSubject(deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   // Recharts Subject Comparison Data
@@ -191,47 +289,85 @@ export default function Gate() {
       {/* Grid: Subjects Progress */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 card p-6 border-surface space-y-4">
-          <h3 className="font-semibold text-fg text-lg flex items-center gap-2">
-            <BookOpen size={20} className="text-primary-500" /> Syllabus Tracker (Subject-Wise Progress)
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {subjects.map(sub => {
-              const p = progress[sub.id] || { hours: 0, pyqs: 0, notes: 0, revisions: 0, videos: 0 };
-              // Cap progress visually at 100
-              const progressPct = Math.min(100, Math.round((p.hours / 60) * 100)); // assume 60h per subject target
-              return (
-                <div key={sub.id} className="p-4 rounded-xl border border-surface bg-surface-secondary/40 space-y-3 relative group">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-semibold text-sm text-fg flex items-center gap-2">
-                        {sub.name}
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <h3 className="font-semibold text-fg text-lg flex items-center gap-2">
+              <BookOpen size={20} className="text-primary-500" /> Syllabus Tracker (Subject-Wise Progress)
+            </h3>
+            <button 
+              onClick={openAddModal}
+              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <Plus size={14} /> Add Subject
+            </button>
+          </div>
+
+          {subjects.length === 0 ? (
+            <div className="text-center py-12 border border-dashed border-surface-border rounded-2xl bg-surface-secondary/20 space-y-3">
+              <BookOpen size={36} className="mx-auto text-fg-3 opacity-40" />
+              <div>
+                <p className="text-sm font-semibold text-fg">No Subjects in Syllabus</p>
+                <p className="text-xs text-fg-3 mt-1 max-w-xs mx-auto">Add your subjects to start tracking hours, PYQs, videos, and syllabus completion.</p>
+              </div>
+              <button onClick={openAddModal} className="btn-primary py-1.5 px-3 text-xs inline-flex items-center gap-1">
+                <Plus size={14} /> Add First Subject
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {subjects.map(sub => {
+                const p = progress[sub.id] || { hours: 0, pyqs: 0, notes: 0, revisions: 0, videos: 0 };
+                const target = sub.targetHours || 60;
+                const progressPct = Math.min(100, Math.round(((p.hours || 0) / target) * 100));
+                return (
+                  <div key={sub.id} className="p-4 rounded-xl border border-surface bg-surface-secondary/40 space-y-3 relative group transition-all hover:border-surface-border">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sub.color || '#6366f1' }} />
+                          <h4 className="font-semibold text-sm text-fg truncate" title={sub.name}>
+                            {sub.name}
+                          </h4>
+                        </div>
+                        <p className="text-xs text-fg-3 mt-1 truncate">
+                          {p.hours || 0} hrs study · {p.pyqs || 0} PYQs · {p.videos || 0} vids
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="badge text-[10px]" style={{ color: sub.color || '#6366f1', backgroundColor: `${sub.color || '#6366f1'}15` }}>
+                          {p.revisions || 0} revs
+                        </span>
                         <button 
-                          onClick={() => openEditModal(sub.id, sub.name)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-fg-3 hover:text-primary-400"
-                          title="Edit Progress"
+                          onClick={() => openEditModal(sub)}
+                          className="p-1 rounded text-fg-3 hover:text-primary-400 hover:bg-surface transition-colors"
+                          title="Edit Subject & Progress"
                         >
                           <Edit3 size={14} />
                         </button>
-                      </h4>
-                      <p className="text-xs text-fg-3">{p.hours || 0} hrs study · {p.pyqs || 0} PYQs</p>
+                        <button 
+                          onClick={() => openDeleteModal(sub)}
+                          className="p-1 rounded text-fg-3 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Delete Subject"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                    <span className="badge text-[10px]" style={{ color: sub.color, backgroundColor: `${sub.color}15` }}>
-                      {p.revisions || 0} revs
-                    </span>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-fg-3">
+                        <span>Progress ({p.hours || 0}/{target} hrs)</span>
+                        <span>{progressPct}%</span>
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${progressPct}%`, background: sub.color || '#6366f1' }} />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-fg-3">
-                      <span>Progress (est)</span>
-                      <span>{progressPct}%</span>
-                    </div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${progressPct}%`, background: sub.color }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Charts & Analytics */}
@@ -304,18 +440,34 @@ export default function Gate() {
               </div>
 
               <form onSubmit={handleLogSubmit} className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Subject</label>
-                  <select
-                    value={selectedSubject}
-                    onChange={e => setSelectedSubject(e.target.value)}
-                    className="input"
-                  >
-                    {subjects.map(sub => (
-                      <option key={sub.id} value={sub.id}>{sub.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {subjects.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-surface-secondary text-center space-y-2">
+                    <p className="text-sm text-fg-2">No subjects available to log study session for.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowLogModal(false);
+                        openAddModal();
+                      }}
+                      className="btn-primary py-1.5 px-3 text-xs inline-flex items-center gap-1"
+                    >
+                      <Plus size={14} /> Add a Subject First
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Subject</label>
+                    <select
+                      value={subjects.some(s => s.id === selectedSubject) ? selectedSubject : (subjects[0]?.id || '')}
+                      onChange={e => setSelectedSubject(e.target.value)}
+                      className="input"
+                    >
+                      {subjects.map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -369,7 +521,7 @@ export default function Gate() {
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setShowLogModal(false)} className="btn-ghost">Cancel</button>
-                  <button type="submit" className="btn-primary">Save Session</button>
+                  <button type="submit" disabled={subjects.length === 0} className="btn-primary disabled:opacity-50">Save Session</button>
                 </div>
               </form>
             </motion.div>
@@ -443,7 +595,146 @@ export default function Gate() {
         )}
       </AnimatePresence>
 
-      {/* Edit Subject Progress Modal */}
+      {/* Add Subject Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="modal-content max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-fg flex items-center gap-2">
+                  <Plus size={18} className="text-primary-500" /> Add Subject to Syllabus
+                </h3>
+                <button onClick={() => setShowAddModal(false)} className="btn-icon text-fg-3 hover:text-fg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Subject Name *</label>
+                  <input
+                    autoFocus
+                    required
+                    value={newSubName}
+                    onChange={e => setNewSubName(e.target.value)}
+                    placeholder="E.g. Theory of Computation, DBMS"
+                    className="input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Target Study Hours</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={newSubTargetHours}
+                      onChange={e => setNewSubTargetHours(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Theme Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={newSubColor}
+                        onChange={e => setNewSubColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border border-surface-border p-1"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        {PRESET_COLORS.slice(0, 5).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setNewSubColor(c)}
+                            className="w-6 h-6 rounded-full border border-white/20 transition-transform hover:scale-110"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-surface-border">
+                  <p className="text-xs font-semibold text-fg mb-3">Initial Progress (Optional)</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-fg-3 mb-1 block">Study Hours</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={newSubHours}
+                        onChange={e => setNewSubHours(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-fg-3 mb-1 block">PYQs Solved</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubPyqs}
+                        onChange={e => setNewSubPyqs(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mt-3">
+                    <div>
+                      <label className="text-xs text-fg-3 mb-1 block">Videos</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubVideos}
+                        onChange={e => setNewSubVideos(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-fg-3 mb-1 block">Notes Units</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubNotes}
+                        onChange={e => setNewSubNotes(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-fg-3 mb-1 block">Revisions</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubRevisions}
+                        onChange={e => setNewSubRevisions(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="btn-ghost">Cancel</button>
+                  <button type="submit" className="btn-primary">Add Subject</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Subject & Progress Modal */}
       <AnimatePresence>
         {showEditModal && (
           <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
@@ -455,74 +746,125 @@ export default function Gate() {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-fg">Edit Progress: {editSubjectName}</h3>
+                <h3 className="text-lg font-bold text-fg flex items-center gap-2">
+                  <Edit3 size={18} className="text-primary-500" /> Edit Subject & Progress
+                </h3>
                 <button onClick={() => setShowEditModal(false)} className="btn-icon text-fg-3 hover:text-fg">
                   <X size={18} />
                 </button>
               </div>
 
               <form onSubmit={handleEditSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Study Hours</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      required
-                      value={editHours}
-                      onChange={e => setEditHours(e.target.value)}
-                      className="input"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">PYQs Solved</label>
-                    <input
-                      type="number"
-                      min="0"
-                      required
-                      value={editPyqs}
-                      onChange={e => setEditPyqs(e.target.value)}
-                      className="input"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Videos Watched</label>
-                    <input
-                      type="number"
-                      min="0"
-                      required
-                      value={editVideos}
-                      onChange={e => setEditVideos(e.target.value)}
-                      className="input"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Notes Created (Units)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      required
-                      value={editNotes}
-                      onChange={e => setEditNotes(e.target.value)}
-                      className="input"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Revisions Completed</label>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Subject Name *</label>
                   <input
-                    type="number"
-                    min="0"
                     required
-                    value={editRevisions}
-                    onChange={e => setEditRevisions(e.target.value)}
+                    value={editSubjectName}
+                    onChange={e => setEditSubjectName(e.target.value)}
                     className="input"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Target Study Hours</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={editTargetHours}
+                      onChange={e => setEditTargetHours(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Theme Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={editSubjectColor}
+                        onChange={e => setEditSubjectColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border border-surface-border p-1"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        {PRESET_COLORS.slice(0, 5).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setEditSubjectColor(c)}
+                            className="w-6 h-6 rounded-full border border-white/20 transition-transform hover:scale-110"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-surface-border">
+                  <p className="text-xs font-semibold text-fg mb-3">Progress Metrics</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Study Hours</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        required
+                        value={editHours}
+                        onChange={e => setEditHours(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">PYQs Solved</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editPyqs}
+                        onChange={e => setEditPyqs(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Videos Watched</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editVideos}
+                        onChange={e => setEditVideos(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Notes Created (Units)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editNotes}
+                        onChange={e => setEditNotes(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Revisions Completed</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={editRevisions}
+                      onChange={e => setEditRevisions(e.target.value)}
+                      className="input"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
@@ -530,6 +872,53 @@ export default function Gate() {
                   <button type="submit" className="btn-primary">Save Changes</button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Subject Confirmation Modal */}
+      <AnimatePresence>
+        {deleteTarget && (
+          <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-sm p-6 shadow-2xl space-y-4"
+              style={{ background: 'var(--surface-primary)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-fg">Delete Subject?</h3>
+                  <p className="text-xs text-fg-3">This action cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-fg-2 leading-relaxed">
+                Are you sure you want to delete <span className="font-semibold text-fg">"{deleteTarget.name}"</span>? All recorded study sessions, PYQs, and tracked progress for this subject will be removed.
+              </p>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTarget(null)}
+                  className="btn-ghost flex-1 justify-center border border-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteConfirm}
+                  className="btn-danger flex-1 justify-center"
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

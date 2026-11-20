@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useFitnessStore } from '../store/useFitnessStore';
+import { useFitnessStore, DEFAULT_FITNESS_GOALS } from '../store/useFitnessStore';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDate, subDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,8 +9,21 @@ import {
 import {
   Dumbbell, Droplets, Moon, Scale, Plus, Minus,
   Target, TrendingUp, Flame, Save, ChevronDown, ChevronUp, Check,
-  Calendar, Activity,
+  Calendar, Activity, Edit3, Trash2, X, AlertTriangle, Sparkles,
 } from 'lucide-react';
+
+const PRESET_GOALS = [
+  { title: 'Water Intake', target: 8, unit: 'glasses', color: '#38bdf8', category: 'water' },
+  { title: 'Sleep Duration', target: 7, unit: 'hours', color: '#a78bfa', category: 'sleep' },
+  { title: 'Body Weight', target: 70, unit: 'kg', color: '#f59e0b', category: 'weight' },
+  { title: 'Daily Steps', target: 10000, unit: 'steps', color: '#10b981', category: 'custom' },
+  { title: 'Protein Intake', target: 120, unit: 'g', color: '#ec4899', category: 'custom' },
+  { title: 'Calories Burned', target: 500, unit: 'kcal', color: '#f97316', category: 'custom' },
+  { title: 'Workout Time', target: 45, unit: 'mins', color: '#8b5cf6', category: 'custom' },
+  { title: 'Daily Pushups', target: 50, unit: 'reps', color: '#06b6d4', category: 'custom' },
+];
+
+const PRESET_COLORS = ['#38bdf8', '#a78bfa', '#f59e0b', '#10b981', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#e11d48'];
 
 /* ─── animation variants ─── */
 const containerVariants = {
@@ -140,7 +153,22 @@ const SectionTitle = ({ icon: Icon, label, color = 'text-indigo-400' }) => (
 
 /* ═══════════════════════════════════════ MAIN PAGE ═══════════════════════════════════════ */
 export default function Fitness() {
-  const { log, goals, logDay, updateGoals, getTodayLog, getWeeklyData, getGymStreak } = useFitnessStore();
+  const { 
+    log, 
+    goals, 
+    fitnessGoals, 
+    logDay, 
+    updateGoals, 
+    addFitnessGoal, 
+    updateFitnessGoal, 
+    deleteFitnessGoal, 
+    updateFitnessGoalProgress,
+    getTodayLog, 
+    getWeeklyData, 
+    getGymStreak 
+  } = useFitnessStore();
+
+  const activeGoals = fitnessGoals && fitnessGoals.length > 0 ? fitnessGoals : DEFAULT_FITNESS_GOALS;
 
   /* ── today form state ── */
   const todayLog = getTodayLog();
@@ -150,11 +178,113 @@ export default function Fitness() {
   const [weight, setWeight] = useState(todayLog.weight ?? '');
   const [saved, setSaved] = useState(false);
 
-  /* ── goals edit state ── */
-  const [editGoals, setEditGoals] = useState(false);
-  const [goalWater, setGoalWater] = useState(goals.waterTarget);
-  const [goalSleep, setGoalSleep] = useState(goals.sleepTarget);
-  const [goalWeight, setGoalWeight] = useState(goals.weightTarget);
+  /* ── fitness goals modal states ── */
+  const [showAddGoalModal, setShowAddGoalModal] = useState(false);
+  const [showEditGoalModal, setShowEditGoalModal] = useState(false);
+  const [deleteGoalTarget, setDeleteGoalTarget] = useState(null);
+
+  // Add Goal Form State
+  const [newGoalTitle, setNewGoalTitle] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState(10);
+  const [newGoalCurrent, setNewGoalCurrent] = useState(0);
+  const [newGoalUnit, setNewGoalUnit] = useState('');
+  const [newGoalColor, setNewGoalColor] = useState('#10b981');
+  const [newGoalCategory, setNewGoalCategory] = useState('custom');
+
+  // Edit Goal Form State
+  const [editGoalId, setEditGoalId] = useState('');
+  const [editGoalTitle, setEditGoalTitle] = useState('');
+  const [editGoalTarget, setEditGoalTarget] = useState(10);
+  const [editGoalCurrent, setEditGoalCurrent] = useState(0);
+  const [editGoalUnit, setEditGoalUnit] = useState('');
+  const [editGoalColor, setEditGoalColor] = useState('#10b981');
+  const [editGoalCategory, setEditGoalCategory] = useState('custom');
+
+  const getGoalLiveValue = useCallback((g) => {
+    if (g.id === 'water' || g.category === 'water') return Number(water) || 0;
+    if (g.id === 'sleep' || g.category === 'sleep') return Number(sleep) || 0;
+    if (g.id === 'weight' || g.category === 'weight') return weight !== '' && weight !== null ? Number(weight) : (g.current || 0);
+    return Number(g.current) || 0;
+  }, [water, sleep, weight]);
+
+  const openAddGoalModal = () => {
+    setNewGoalTitle('');
+    setNewGoalTarget(10);
+    setNewGoalCurrent(0);
+    setNewGoalUnit('');
+    setNewGoalColor(PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]);
+    setNewGoalCategory('custom');
+    setShowAddGoalModal(true);
+  };
+
+  const applyPreset = (preset) => {
+    setNewGoalTitle(preset.title);
+    setNewGoalTarget(preset.target);
+    setNewGoalUnit(preset.unit);
+    setNewGoalColor(preset.color);
+    setNewGoalCategory(preset.category || 'custom');
+  };
+
+  const handleAddGoalSubmit = (e) => {
+    e.preventDefault();
+    if (!newGoalTitle.trim()) return;
+
+    addFitnessGoal({
+      title: newGoalTitle.trim(),
+      target: Number(newGoalTarget) || 1,
+      current: Number(newGoalCurrent) || 0,
+      unit: newGoalUnit.trim(),
+      color: newGoalColor,
+      category: newGoalCategory,
+    });
+
+    setShowAddGoalModal(false);
+  };
+
+  const openEditGoalModal = (g) => {
+    setEditGoalId(g.id);
+    setEditGoalTitle(g.title);
+    setEditGoalTarget(g.target);
+    setEditGoalCurrent(getGoalLiveValue(g));
+    setEditGoalUnit(g.unit || '');
+    setEditGoalColor(g.color || '#10b981');
+    setEditGoalCategory(g.category || 'custom');
+    setShowEditGoalModal(true);
+  };
+
+  const handleEditGoalSubmit = (e) => {
+    e.preventDefault();
+    if (!editGoalId || !editGoalTitle.trim()) return;
+
+    updateFitnessGoal(editGoalId, {
+      title: editGoalTitle.trim(),
+      target: Number(editGoalTarget) || 1,
+      current: Number(editGoalCurrent) || 0,
+      unit: editGoalUnit.trim(),
+      color: editGoalColor,
+      category: editGoalCategory,
+    });
+
+    if (editGoalCategory === 'water' || editGoalId === 'water') {
+      setWater(Number(editGoalCurrent) || 0);
+    } else if (editGoalCategory === 'sleep' || editGoalId === 'sleep') {
+      setSleep(Number(editGoalCurrent) || 0);
+    } else if (editGoalCategory === 'weight' || editGoalId === 'weight') {
+      setWeight(Number(editGoalCurrent) || '');
+    }
+
+    setShowEditGoalModal(false);
+  };
+
+  const openDeleteGoalModal = (g) => {
+    setDeleteGoalTarget(g);
+  };
+
+  const handleDeleteGoalConfirm = () => {
+    if (!deleteGoalTarget) return;
+    deleteFitnessGoal(deleteGoalTarget.id);
+    setDeleteGoalTarget(null);
+  };
 
   /* ── sync if store changes ── */
   useEffect(() => {
@@ -196,11 +326,6 @@ export default function Fitness() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }, [gym, water, sleep, weight, logDay]);
-
-  const handleSaveGoals = useCallback(() => {
-    updateGoals({ waterTarget: Number(goalWater), sleepTarget: Number(goalSleep), weightTarget: Number(goalWeight) });
-    setEditGoals(false);
-  }, [goalWater, goalSleep, goalWeight, updateGoals]);
 
   /* ── weight chart data (filter nulls) ── */
   const weightChartData = useMemo(() =>
@@ -442,74 +567,121 @@ export default function Fitness() {
           </motion.div>
 
           {/* ── Goals Card ── */}
-          <motion.div variants={itemVariants} className="card p-5">
-            <div className="flex items-center justify-between mb-4">
+          <motion.div variants={itemVariants} className="card p-5 space-y-4">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Target size={16} className="text-amber-400" />
-                <h3 className="font-semibold text-fg text-sm uppercase tracking-wider">Goals</h3>
+                <h3 className="font-semibold text-fg text-sm uppercase tracking-wider">Fitness Goals</h3>
               </div>
               <button
-                onClick={() => setEditGoals(e => !e)}
-                className="btn-ghost text-xs py-1 px-2"
+                onClick={openAddGoalModal}
+                className="btn-primary py-1 px-2.5 text-xs flex items-center gap-1"
               >
-                {editGoals ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {editGoals ? 'Close' : 'Edit'}
+                <Plus size={13} /> Add Goal
               </button>
             </div>
 
-            <AnimatePresence>
-              {editGoals ? (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="space-y-4"
-                >
-                  {[
-                    { label: 'Water Target (glasses)', value: goalWater, set: setGoalWater, icon: <Droplets size={13} className="text-sky-400" />, min: 1, max: 20 },
-                    { label: 'Sleep Target (hours)', value: goalSleep, set: setGoalSleep, icon: <Moon size={13} className="text-violet-400" />, min: 1, max: 12 },
-                    { label: 'Weight Target (kg)', value: goalWeight, set: setGoalWeight, icon: <Scale size={13} className="text-amber-400" />, min: 1, max: 300 },
-                  ].map(({ label, value, set, icon, min, max }) => (
-                    <div key={label}>
-                      <label className="flex items-center gap-1 text-xs text-fg-2 mb-1.5">
-                        {icon} {label}
-                      </label>
-                      <input
-                        type="number"
-                        min={min}
-                        max={max}
-                        value={value}
-                        onChange={e => set(e.target.value)}
-                        className="input text-sm"
-                      />
-                    </div>
-                  ))}
-                  <button onClick={handleSaveGoals} className="btn-primary w-full justify-center text-sm py-2.5">
-                    <Check size={14} /> Save Goals
-                  </button>
-                </motion.div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="space-y-3"
-                >
-                  {[
-                    { icon: <Droplets size={14} className="text-sky-400" />, label: 'Water', value: `${goals.waterTarget} glasses`, bg: 'bg-sky-500/10' },
-                    { icon: <Moon size={14} className="text-violet-400" />, label: 'Sleep', value: `${goals.sleepTarget} hours`, bg: 'bg-violet-500/10' },
-                    { icon: <Scale size={14} className="text-amber-400" />, label: 'Weight', value: `${goals.weightTarget} kg`, bg: 'bg-amber-500/10' },
-                  ].map(({ icon, label, value, bg }) => (
-                    <div key={label} className={`flex items-center justify-between ${bg} rounded-xl px-4 py-3`}>
-                      <div className="flex items-center gap-2 text-sm text-fg-2">
-                        {icon} {label}
+            {activeGoals.length === 0 ? (
+              <div className="text-center py-8 border border-dashed border-surface-border rounded-xl space-y-2">
+                <Target size={30} className="mx-auto text-fg-3 opacity-40" />
+                <div>
+                  <p className="text-xs font-semibold text-fg">No Fitness Goals</p>
+                  <p className="text-[11px] text-fg-3 mt-0.5">Add goals to track water, workouts, steps, or custom targets.</p>
+                </div>
+                <button onClick={openAddGoalModal} className="btn-primary py-1 px-3 text-xs inline-flex items-center gap-1">
+                  <Plus size={13} /> Add First Goal
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeGoals.map(g => {
+                  const currentVal = getGoalLiveValue(g);
+                  const targetVal = g.target || 1;
+                  const pct = Math.min(100, Math.round((currentVal / targetVal) * 100));
+
+                  return (
+                    <div 
+                      key={g.id} 
+                      className="p-3.5 rounded-xl border border-surface bg-surface-secondary/40 space-y-2 relative group transition-all hover:border-surface-border"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div 
+                            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: `${g.color || '#10b981'}20`, color: g.color || '#10b981' }}
+                          >
+                            <Target size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-xs text-fg truncate" title={g.title}>{g.title}</h4>
+                            <p className="text-[11px] text-fg-3">
+                              Target: {g.target} {g.unit}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button 
+                            onClick={() => openEditGoalModal(g)}
+                            className="p-1 rounded text-fg-3 hover:text-primary-400 hover:bg-surface transition-colors"
+                            title="Edit Goal"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button 
+                            onClick={() => openDeleteGoalModal(g)}
+                            className="p-1 rounded text-fg-3 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Delete Goal"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-sm font-semibold text-fg">{value}</span>
+
+                      {/* Progress bar & current vs target */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-fg-2 font-medium">
+                            {currentVal} / {g.target} {g.unit}
+                          </span>
+                          <span className="font-semibold" style={{ color: g.color || '#10b981' }}>
+                            {pct}% {pct >= 100 && '🎉'}
+                          </span>
+                        </div>
+                        <div className="progress-bar h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+                          <div 
+                            className="progress-fill h-full rounded-full transition-all duration-300"
+                            style={{ width: `${pct}%`, backgroundColor: g.color || '#10b981' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Quick progress adjustments for custom goals */}
+                      {g.category === 'custom' && (
+                        <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => updateFitnessGoalProgress(g.id, -1, true)}
+                            className="p-1 rounded bg-surface hover:bg-surface-tertiary text-fg-3 hover:text-fg text-xs"
+                            title="Decrease 1"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateFitnessGoalProgress(g.id, 1, true)}
+                            className="p-1 rounded bg-surface hover:bg-surface-tertiary text-fg-3 hover:text-fg text-xs"
+                            title="Increase 1"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
         </div>
 
@@ -731,6 +903,277 @@ export default function Fitness() {
 
         </div>
       </motion.div>
+
+      {/* ── Add Fitness Goal Modal ── */}
+      <AnimatePresence>
+        {showAddGoalModal && (
+          <div className="modal-overlay" onClick={() => setShowAddGoalModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="modal-content max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-fg flex items-center gap-2">
+                  <Target size={18} className="text-amber-400" /> Add Fitness Goal
+                </h3>
+                <button onClick={() => setShowAddGoalModal(false)} className="btn-icon text-fg-3 hover:text-fg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="mb-4">
+                <label className="text-xs font-semibold text-fg-3 uppercase tracking-wider block mb-2">
+                  Quick Presets
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_GOALS.map(preset => (
+                    <button
+                      key={preset.title}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium border border-surface bg-surface-secondary hover:bg-surface-tertiary hover:border-surface-border text-fg-2 transition-all flex items-center gap-1.5"
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: preset.color }} />
+                      {preset.title} ({preset.target} {preset.unit})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <form onSubmit={handleAddGoalSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Goal Title *</label>
+                  <input
+                    autoFocus
+                    required
+                    value={newGoalTitle}
+                    onChange={e => setNewGoalTitle(e.target.value)}
+                    placeholder="E.g. Daily Steps, Protein Intake"
+                    className="input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Target Value *</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.1"
+                      required
+                      value={newGoalTarget}
+                      onChange={e => setNewGoalTarget(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Unit</label>
+                    <input
+                      value={newGoalUnit}
+                      onChange={e => setNewGoalUnit(e.target.value)}
+                      placeholder="e.g. steps, glasses, g, kg"
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Initial Progress</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={newGoalCurrent}
+                      onChange={e => setNewGoalCurrent(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Theme Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={newGoalColor}
+                        onChange={e => setNewGoalColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border border-surface-border p-1"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        {PRESET_COLORS.slice(0, 5).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setNewGoalColor(c)}
+                            className="w-5 h-5 rounded-full border border-white/20 transition-transform hover:scale-110"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button type="button" onClick={() => setShowAddGoalModal(false)} className="btn-ghost">Cancel</button>
+                  <button type="submit" className="btn-primary">Add Goal</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Edit Fitness Goal Modal ── */}
+      <AnimatePresence>
+        {showEditGoalModal && (
+          <div className="modal-overlay" onClick={() => setShowEditGoalModal(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="modal-content max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-fg flex items-center gap-2">
+                  <Edit3 size={18} className="text-primary-500" /> Edit Fitness Goal
+                </h3>
+                <button onClick={() => setShowEditGoalModal(false)} className="btn-icon text-fg-3 hover:text-fg">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditGoalSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Goal Title *</label>
+                  <input
+                    required
+                    value={editGoalTitle}
+                    onChange={e => setEditGoalTitle(e.target.value)}
+                    className="input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Target Value *</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.1"
+                      required
+                      value={editGoalTarget}
+                      onChange={e => setEditGoalTarget(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Unit</label>
+                    <input
+                      value={editGoalUnit}
+                      onChange={e => setEditGoalUnit(e.target.value)}
+                      placeholder="e.g. steps, glasses, g, kg"
+                      className="input"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Current Progress</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={editGoalCurrent}
+                      onChange={e => setEditGoalCurrent(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">Theme Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={editGoalColor}
+                        onChange={e => setEditGoalColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border border-surface-border p-1"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        {PRESET_COLORS.slice(0, 5).map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setEditGoalColor(c)}
+                            className="w-5 h-5 rounded-full border border-white/20 transition-transform hover:scale-110"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button type="button" onClick={() => setShowEditGoalModal(false)} className="btn-ghost">Cancel</button>
+                  <button type="submit" className="btn-primary">Save Changes</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Delete Fitness Goal Confirmation Modal ── */}
+      <AnimatePresence>
+        {deleteGoalTarget && (
+          <div className="modal-overlay" onClick={() => setDeleteGoalTarget(null)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="card w-full max-w-sm p-6 shadow-2xl space-y-4"
+              style={{ background: 'var(--surface-primary)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-fg">Delete Fitness Goal?</h3>
+                  <p className="text-xs text-fg-3">This action cannot be undone</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-fg-2 leading-relaxed">
+                Are you sure you want to delete <span className="font-semibold text-fg">"{deleteGoalTarget.title}"</span>? This target will be removed from your fitness goals.
+              </p>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteGoalTarget(null)}
+                  className="btn-ghost flex-1 justify-center border border-surface"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteGoalConfirm}
+                  className="btn-danger flex-1 justify-center"
+                >
+                  <Trash2 size={14} /> Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
