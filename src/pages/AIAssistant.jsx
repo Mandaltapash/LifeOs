@@ -4,11 +4,13 @@ import { useTodoStore } from '../store/useTodoStore';
 import { useHabitStore } from '../store/useHabitStore';
 import { useFitnessStore } from '../store/useFitnessStore';
 import { usePlannerStore } from '../store/usePlannerStore';
+import { useCodingStore } from '../store/useCodingStore';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, Bot, User, Copy, Key, Sparkles, X, Check, Eye, EyeOff, 
-  Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Sliders, Flame, ChevronDown
+  Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Sliders, Flame, ChevronDown,
+  Code2, BookmarkCheck, Terminal, BookOpen
 } from 'lucide-react';
 import SaraVisualizer from '../components/SaraVisualizer';
 import { 
@@ -17,6 +19,234 @@ import {
   SaraVoicePlayer, 
   SaraSpeechRecognizer 
 } from '../services/saraService';
+
+function CodeBlock({ language, code, onSaveToLifeOS }) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSave = () => {
+    if (onSaveToLifeOS) {
+      onSaveToLifeOS(code, language);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+  };
+
+  return (
+    <div className="my-2.5 rounded-xl border border-white/[0.08] bg-[#0b0f19] shadow-lg overflow-hidden text-left">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.04] border-b border-white/[0.06] text-xs">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+          </div>
+          <span className="text-[10px] font-mono font-bold uppercase text-purple-300 ml-1 tracking-wider flex items-center gap-1">
+            <Code2 size={11} className="text-purple-400" />
+            {language || 'code'}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {onSaveToLifeOS && (
+            <button
+              type="button"
+              onClick={handleSave}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+                saved
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-white/[0.05] hover:bg-white/[0.1] text-fg-3 hover:text-fg border border-white/[0.08]'
+              }`}
+              title="Save snippet to LifeOS Coding section"
+            >
+              {saved ? (
+                <>
+                  <Check size={10} className="text-emerald-400" />
+                  <span>Saved!</span>
+                </>
+              ) : (
+                <>
+                  <BookmarkCheck size={10} />
+                  <span>Save Snippet</span>
+                </>
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-all ${
+              copied
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-white/[0.05] hover:bg-white/[0.1] text-fg-3 hover:text-fg border border-white/[0.08]'
+            }`}
+            title="Copy Code"
+          >
+            {copied ? (
+              <>
+                <Check size={10} className="text-emerald-400" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={10} />
+                <span>Copy Code</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      <pre className="p-3.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-emerald-300 selection:bg-purple-500/30 select-text">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function renderInlineText(text) {
+  if (!text) return null;
+  const tokens = [];
+  const regex = /(\*\*.*?\*\*|`.*?`)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      tokens.push(
+        <strong key={match.index} className="font-semibold text-fg">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      tokens.push(
+        <code
+          key={match.index}
+          className="px-1.5 py-0.5 rounded bg-white/[0.08] border border-white/[0.08] font-mono text-[10.5px] text-purple-300 mx-0.5"
+        >
+          {token.slice(1, -1)}
+        </code>
+      );
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    tokens.push(text.slice(lastIndex));
+  }
+  return tokens.length > 0 ? tokens : text;
+}
+
+function SaraMessageRenderer({ content, onSaveSnippet }) {
+  if (!content) return null;
+
+  // Match fenced code blocks
+  const codeRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+  const blocks = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      blocks.push({
+        type: 'text',
+        text: content.slice(lastIndex, match.index),
+      });
+    }
+    blocks.push({
+      type: 'code',
+      language: match[1] || 'code',
+      code: match[2].trim(),
+    });
+    lastIndex = codeRegex.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    blocks.push({
+      type: 'text',
+      text: content.slice(lastIndex),
+    });
+  }
+
+  return (
+    <div className="space-y-1">
+      {blocks.map((block, bIdx) => {
+        if (block.type === 'code') {
+          return (
+            <CodeBlock
+              key={bIdx}
+              language={block.language}
+              code={block.code}
+              onSaveToLifeOS={onSaveSnippet}
+            />
+          );
+        }
+
+        const lines = block.text.split('\n');
+        return (
+          <div key={bIdx} className="space-y-1">
+            {lines.map((line, lIdx) => {
+              const trimmed = line.trim();
+              if (!trimmed) return <div key={lIdx} className="h-1" />;
+
+              if (line.startsWith('### ')) {
+                return (
+                  <h4 key={lIdx} className="text-xs font-bold mt-2.5 mb-1 text-primary-400">
+                    {renderInlineText(line.replace('### ', ''))}
+                  </h4>
+                );
+              }
+              if (line.startsWith('## ')) {
+                return (
+                  <h3 key={lIdx} className="text-sm font-bold mt-3 mb-1 text-primary-300">
+                    {renderInlineText(line.replace('## ', ''))}
+                  </h3>
+                );
+              }
+              if (line.startsWith('# ')) {
+                return (
+                  <h2 key={lIdx} className="text-sm font-extrabold mt-3 mb-1 text-primary-200">
+                    {renderInlineText(line.replace('# ', ''))}
+                  </h2>
+                );
+              }
+              if (line.startsWith('* ') || line.startsWith('- ')) {
+                return (
+                  <div key={lIdx} className="flex items-start gap-1.5 ml-1 my-0.5">
+                    <span className="text-purple-400 mt-1 flex-shrink-0">•</span>
+                    <span className="text-fg-2 leading-relaxed">{renderInlineText(line.replace(/^(\*|-)\s+/, ''))}</span>
+                  </div>
+                );
+              }
+              if (line.match(/^\d+\.\s+/)) {
+                return (
+                  <div key={lIdx} className="flex items-start gap-1.5 ml-1 my-0.5">
+                    <span className="text-primary-400 font-semibold text-[11px] mt-0.5 flex-shrink-0">
+                      {line.match(/^\d+\./)[0]}
+                    </span>
+                    <span className="text-fg-2 leading-relaxed">{renderInlineText(line.replace(/^\d+\.\s+/, ''))}</span>
+                  </div>
+                );
+              }
+              return (
+                <p key={lIdx} className="mb-1 leading-relaxed text-fg">
+                  {renderInlineText(line)}
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function AIAssistant() {
   const { geminiApiKey, setGeminiApiKey, settings } = useAppStore();
@@ -28,6 +258,7 @@ export default function AIAssistant() {
   const { habits, getTodayCompletedCount: getHabitsCompletedCount, getLongestStreak } = useHabitStore();
   const { goals: fitnessTargets, fitnessGoals, getTodayLog: getFitnessTodayLog, getGymStreak } = useFitnessStore();
   const { getTodayBlocks } = usePlannerStore();
+  const { addProblem, stats: codingStats } = useCodingStore();
 
   // Assistant State
   const [viewMode, setViewMode] = useState('voice'); // 'voice' | 'chat'
@@ -39,7 +270,7 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: `Hello ${userName}! Main hoon SARA, aapki personal AI assistant. 💅\n\nMujhe aapke GATE exam, daily To-Dos, habits, fitness goals, aur routine sab ka pura pata hai. Boliye, aaj kya plan karein?`,
+      content: `Hello ${userName}! Main hoon SARA, aapki personal AI companion & coding/assignment solver. 💅\n\nAap mujhe koi bhi programming task, DSA problem, college assignment, ya GATE CS ka numerical question solve karne ke liye bol sakte ho. Main complete working code, test cases, aur step-by-step logic ke sath solve kar dungi!\n\nBoliye, aaj kya code ya study solve karein?`,
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -159,11 +390,16 @@ export default function AIAssistant() {
       plannerStats: {
         todayBlocksCount: getTodayBlocks()?.length || 0,
       },
+      codingStats: {
+        dsaSolved: codingStats?.dsaSolved || 0,
+        pythonProblems: codingStats?.pythonProblems || 0,
+        totalHours: codingStats?.totalHours || 0,
+      },
     };
   }, [
     userName, gateProgress, gateSubjects, getPendingCount, getCompletedTodayCount,
     tasks, getHabitsCompletedCount, habits, getLongestStreak, getGymStreak,
-    getFitnessTodayLog, fitnessTargets, getTodayBlocks
+    getFitnessTodayLog, fitnessTargets, getTodayBlocks, codingStats
   ]);
 
   const handleSend = async (textToSend) => {
@@ -195,7 +431,7 @@ export default function AIAssistant() {
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -211,8 +447,12 @@ export default function AIAssistant() {
       );
 
       const data = await response.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 
-        "Uff Tapash, response process nahi ho paya. Ek baar network ya API key check karo!";
+      let reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!response.ok || !reply) {
+        console.warn('Gemini API call failed, falling back to smart offline response:', data?.error || data);
+        reply = getOfflineSaraResponse(text, lifeOsData, tone);
+      }
 
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       speakResponse(reply);
@@ -243,6 +483,65 @@ export default function AIAssistant() {
   const getOfflineSaraResponse = (text, lifeData, currentTone) => {
     const q = text.toLowerCase();
     const { gateStats, tasksStats, habitsStats, fitnessStats } = lifeData;
+
+    if (q.includes('program') || q.includes('code') || q.includes('assignment') || q.includes('question') || q.includes('solve') || q.includes('dsa') || q.includes('algorithm') || q.includes('python') || q.includes('java') || q.includes(' c ') || q.startsWith('c ') || q.includes('c++')) {
+      return `### 💻 SARA Coding & Assignment Solver
+Arre ${userName}! Chahe koi bhi complex programming problem ho, DSA algorithm, ya academic assignment—main sab step-by-step solve kar sakti hoon! 💅
+
+Yahan ek classic **QuickSort Algorithm in C** ka complete runnable code aur logic hai:
+
+\`\`\`c
+#include <stdio.h>
+
+// Partition helper: places pivot in correct sorted position
+int partition(int arr[], int low, int high) {
+    int pivot = arr[high]; // Choosing the last element as pivot
+    int i = (low - 1);
+    
+    for (int j = low; j < high; j++) {
+        if (arr[j] < pivot) {
+            i++;
+            int temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+    }
+    int temp = arr[i + 1];
+    arr[i + 1] = arr[high];
+    arr[high] = temp;
+    return (i + 1);
+}
+
+// Recursive QuickSort function
+void quickSort(int arr[], int low, int high) {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quickSort(arr, low, pi - 1);  // Sort elements before partition
+        quickSort(arr, pi + 1, high); // Sort elements after partition
+    }
+}
+
+int main() {
+    int arr[] = {24, 9, 29, 14, 19, 27};
+    int n = sizeof(arr) / sizeof(arr[0]);
+    
+    quickSort(arr, 0, n - 1);
+    
+    printf("Sorted Array: ");
+    for (int i = 0; i < n; i++) {
+        printf("%d ", arr[i]);
+    }
+    printf("\\n");
+    return 0;
+}
+\`\`\`
+
+### 📊 Step-by-Step Logic & Complexity:
+*   **Divide & Conquer Approach**: Pivot element choose karke sub-arrays ko recursively partition aur sort karte hain.
+*   **Time Complexity**: Average & Best Case: **O(N log N)**. Worst Case: **O(N²)** (jab array already sorted ho).
+*   **Space Complexity**: **O(log N)** auxiliary stack space.
+*   **Assignment Tip**: Aap koi bhi custom assignment question ya coding problem mujhe prompt karo (C, C++, Java, Python, SQL, OS, DBMS), main complete code aur test cases ke sath deliver kar dungi!`;
+    }
 
     if (q.includes('gate') || q.includes('study') || q.includes('syllabus')) {
       return `### 📚 GATE Prep Status & Advice
@@ -499,12 +798,19 @@ Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine 
                   >
                     {copiedId === idx ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
                   </button>
-                  <div className="prose ProseMirror prose-sm max-w-none text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                    {msg.content.split('\n').map((line, lIdx) => {
-                      if (line.startsWith('###')) return <h4 key={lIdx} className="text-xs font-bold mt-2 mb-1 text-primary-400">{line.replace('###', '')}</h4>;
-                      if (line.startsWith('*')) return <li key={lIdx} className="ml-2.5 my-0.5">{line.replace('*', '').trim()}</li>;
-                      return <p key={lIdx} className="mb-1">{line}</p>;
-                    })}
+                  <div className="text-xs leading-relaxed">
+                    <SaraMessageRenderer
+                      content={msg.content}
+                      onSaveSnippet={(code, lang) => {
+                        addProblem({
+                          title: `SARA Solution (${(lang || 'code').toUpperCase()})`,
+                          difficulty: 'medium',
+                          topic: (lang || '').toLowerCase() === 'python' ? 'python' : 'dsa',
+                          platform: 'assignment',
+                          notes: code,
+                        });
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -536,7 +842,7 @@ Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine 
             <input
               value={inputText}
               onChange={e => setInputText(e.target.value)}
-              placeholder={`Message Sara (${tone})...`}
+              placeholder={`Message Sara (${tone}) - code, homework, GATE or chat...`}
               className="input flex-1 py-2 text-xs"
             />
             <button type="submit" className="btn-primary py-2 px-3">
@@ -548,6 +854,18 @@ Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine 
 
       {/* ── Suggested LifeOS Prompt Pills ── */}
       <div className="flex gap-2 overflow-x-auto pt-3 pb-1 scrollbar-none">
+        <button 
+          onClick={() => handleSend("Sara, ek Python program likho: QuickSort with step-by-step logic, test cases aur time complexity analysis")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40 text-purple-300 border-purple-500/30"
+        >
+          💻 Write Code / Program
+        </button>
+        <button 
+          onClick={() => handleSend("Sara, mera ye assignment solve karo: In Paging system, calculate physical address given 32-bit logical address and 4KB page size with numerical steps")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-emerald-500/40 text-emerald-300 border-emerald-500/30"
+        >
+          📝 Solve Assignment Question
+        </button>
         <button 
           onClick={() => handleSend("Sara, mera GATE study status check karo aur strategy batao")} 
           className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
@@ -561,8 +879,8 @@ Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine 
           📋 Check Pending Tasks
         </button>
         <button 
-          onClick={() => handleSend("Mera fitness goal kaisa chal raha hai?") 
-          } className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
+          onClick={() => handleSend("Mera fitness goal kaisa chal raha hai?")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
         >
           🏋️ Fitness Goals Review
         </button>
