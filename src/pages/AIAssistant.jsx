@@ -8,7 +8,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, Bot, User, Copy, Key, Sparkles, X, Check, Eye, EyeOff, 
-  Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Sliders, Flame
+  Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Sliders, Flame, ChevronDown
 } from 'lucide-react';
 import SaraVisualizer from '../components/SaraVisualizer';
 import { 
@@ -285,85 +285,132 @@ Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] page-enter">
       {/* ── Top Header Bar ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-surface-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-500 to-amber-400 p-[1.5px] shadow-glow-primary">
-            <div className="w-full h-full rounded-2xl bg-slate-950 flex items-center justify-center overflow-hidden">
-              <img src="/sara/idle.png" alt="Sara" className="w-full h-full object-cover" />
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-4 border-b border-surface-border">
+        {/* Left: Sara Identity & Live Status */}
+        <div className="flex items-center gap-3.5">
+          <div className="relative flex-shrink-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-500 to-amber-400 p-[2px] shadow-glow-primary">
+              <div className="w-full h-full rounded-2xl bg-slate-950 flex items-center justify-center overflow-hidden">
+                <img src="/sara/idle.png" alt="Sara" className="w-full h-full object-cover" />
+              </div>
             </div>
+            {/* Live pulsing online indicator */}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-slate-950"></span>
+            </span>
           </div>
+
           <div>
-            <h1 className="page-title flex items-center gap-2 text-xl font-bold">
-              <span>SARA</span>
-              <span className="badge badge-purple text-[10px] uppercase">AI Companion</span>
-            </h1>
-            <p className="page-subtitle text-xs">Voice & Productivity Co-Pilot with full LifeOS Context</p>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-violet-400 via-purple-300 to-indigo-200 bg-clip-text text-transparent">
+                SARA
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase bg-purple-500/10 text-purple-300 border border-purple-500/20 shadow-sm">
+                <Sparkles size={10} className="text-purple-400" /> AI Co-Pilot
+              </span>
+            </div>
+            <p className="text-xs text-fg-3 flex items-center gap-1.5 mt-0.5">
+              <span>Voice & Productivity Co-Pilot</span>
+              <span className="text-white/20">•</span>
+              <span className="text-emerald-400/90 font-medium">LifeOS Synced</span>
+            </p>
           </div>
         </div>
 
-        {/* Controls: Mode Toggle, Tone, Mute, API Key */}
-        <div className="flex items-center flex-wrap gap-2">
-          {/* Mode switch */}
-          <div className="flex items-center bg-surface-secondary border border-surface-border rounded-xl p-0.5 text-xs">
+        {/* Right: Sleek Unified Control Bar */}
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* Segmented Mode Switcher */}
+          <div className="inline-flex items-center bg-surface-secondary/90 border border-surface-border rounded-xl p-1 text-xs shadow-sm">
             <button
               onClick={() => setViewMode('voice')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                viewMode === 'voice' ? 'bg-primary-600 text-white shadow-sm font-semibold' : 'text-fg-3 hover:text-fg'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                viewMode === 'voice'
+                  ? 'bg-gradient-to-r from-primary-600 to-indigo-600 text-white shadow-sm shadow-primary-500/20 font-semibold'
+                  : 'text-fg-3 hover:text-fg hover:bg-white/[0.04]'
               }`}
             >
-              <Radio size={13} /> Voice Mode
+              <Radio size={13} className={viewMode === 'voice' ? 'animate-pulse' : ''} />
+              <span>Voice Mode</span>
             </button>
             <button
               onClick={() => setViewMode('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                viewMode === 'chat' ? 'bg-primary-600 text-white shadow-sm font-semibold' : 'text-fg-3 hover:text-fg'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+                viewMode === 'chat'
+                  ? 'bg-gradient-to-r from-primary-600 to-indigo-600 text-white shadow-sm shadow-primary-500/20 font-semibold'
+                  : 'text-fg-3 hover:text-fg hover:bg-white/[0.04]'
               }`}
             >
-              <MessageSquare size={13} /> Chat Mode
+              <MessageSquare size={13} />
+              <span>Chat Mode</span>
             </button>
           </div>
 
-          {/* Tone Selector */}
-          <select
-            value={tone}
-            onChange={e => setTone(e.target.value)}
-            className="input py-1.5 px-2.5 text-xs bg-surface-secondary border-surface-border cursor-pointer"
-            title="Sara's Personality Tone"
-          >
-            {SARA_TONES.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.emoji} {t.name}
-              </option>
-            ))}
-          </select>
+          {/* Quick Actions Group: Tone, Mute, Key */}
+          <div className="flex items-center gap-2">
+            {/* Tone Selector */}
+            <div className="relative inline-flex items-center">
+              <select
+                value={tone}
+                onChange={e => setTone(e.target.value)}
+                className="h-[38px] appearance-none pl-3 pr-8 py-1.5 text-xs font-medium rounded-xl bg-surface-secondary/90 border border-surface-border hover:border-surface-border-hover text-fg focus:outline-none focus:border-primary-500 cursor-pointer transition-all shadow-sm"
+                title="Sara's Personality Tone"
+              >
+                {SARA_TONES.map(t => (
+                  <option key={t.id} value={t.id} className="bg-slate-900 text-fg">
+                    {t.emoji} {t.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />
+            </div>
 
-          {/* Mute/Unmute */}
-          <button
-            onClick={() => {
-              if (!isVoiceMuted && voicePlayerRef.current) {
-                voicePlayerRef.current.stop();
-                setAssistantState('idle');
-              }
-              setIsVoiceMuted(!isVoiceMuted);
-            }}
-            className={`btn-icon p-2 rounded-xl border border-surface-border ${
-              isVoiceMuted ? 'text-red-400 bg-red-500/10' : 'text-fg-2 hover:text-fg bg-surface-secondary'
-            }`}
-            title={isVoiceMuted ? 'Unmute Sara Voice' : 'Mute Sara Voice'}
-          >
-            {isVoiceMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-          </button>
+            {/* Mute/Unmute Audio Button */}
+            <button
+              onClick={() => {
+                if (!isVoiceMuted && voicePlayerRef.current) {
+                  voicePlayerRef.current.stop();
+                  setAssistantState('idle');
+                }
+                setIsVoiceMuted(!isVoiceMuted);
+              }}
+              className={`w-[38px] h-[38px] rounded-xl flex items-center justify-center border transition-all ${
+                isVoiceMuted
+                  ? 'text-rose-400 bg-rose-500/10 border-rose-500/25 hover:bg-rose-500/20'
+                  : 'text-fg-2 hover:text-fg bg-surface-secondary/90 border-surface-border hover:border-surface-border-hover hover:bg-surface-hover shadow-sm'
+              }`}
+              title={isVoiceMuted ? 'Voice Muted (Click to Unmute)' : 'Voice Active (Click to Mute)'}
+            >
+              {isVoiceMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            </button>
 
-          {/* API Key Modal Button */}
-          <button
-            onClick={() => {
-              setApiKeyInput(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
-              setShowKeyModal(true);
-            }}
-            className={`btn py-1.5 px-3 text-xs ${geminiApiKey ? 'btn-secondary' : 'btn-primary'}`}
-          >
-            <Key size={13} /> {geminiApiKey ? 'Key Active' : 'Add Key'}
-          </button>
+            {/* API Key Modal Button */}
+            <button
+              onClick={() => {
+                setApiKeyInput(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
+                setShowKeyModal(true);
+              }}
+              className={`h-[38px] px-3.5 rounded-xl text-xs font-medium flex items-center gap-2 border transition-all shadow-sm ${
+                geminiApiKey
+                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/20'
+                  : 'bg-primary-600 hover:bg-primary-500 text-white border-primary-500/30 shadow-primary-500/25'
+              }`}
+              title="Configure Gemini API Key"
+            >
+              {geminiApiKey ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <Key size={13} />
+                  <span>Key Active</span>
+                </>
+              ) : (
+                <>
+                  <Key size={13} />
+                  <span>Add Key</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
