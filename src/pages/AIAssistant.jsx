@@ -1,15 +1,45 @@
 import { useAppStore } from '../store/useAppStore';
-import { useState, useRef, useEffect } from 'react';
+import { useGateStore } from '../store/useGateStore';
+import { useTodoStore } from '../store/useTodoStore';
+import { useHabitStore } from '../store/useHabitStore';
+import { useFitnessStore } from '../store/useFitnessStore';
+import { usePlannerStore } from '../store/usePlannerStore';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Copy, Key, Sparkles, X, Check, Eye, EyeOff } from 'lucide-react';
+import { 
+  Send, Bot, User, Copy, Key, Sparkles, X, Check, Eye, EyeOff, 
+  Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Sliders, Flame
+} from 'lucide-react';
+import SaraVisualizer from '../components/SaraVisualizer';
+import { 
+  SARA_TONES, 
+  generateSaraSystemContext, 
+  SaraVoicePlayer, 
+  SaraSpeechRecognizer 
+} from '../services/saraService';
 
 export default function AIAssistant() {
-  const { geminiApiKey, setGeminiApiKey } = useAppStore();
+  const { geminiApiKey, setGeminiApiKey, settings } = useAppStore();
+  const userName = settings?.name || 'Tapash';
+
+  // LifeOS Stores for Context
+  const { subjects: gateSubjects, progress: gateProgress, getTotalHours } = useGateStore();
+  const { tasks, getPendingCount, getCompletedTodayCount } = useTodoStore();
+  const { habits, getTodayCompletedCount: getHabitsCompletedCount, getLongestStreak } = useHabitStore();
+  const { goals: fitnessTargets, fitnessGoals, getTodayLog: getFitnessTodayLog, getGymStreak } = useFitnessStore();
+  const { getTodayBlocks } = usePlannerStore();
+
+  // Assistant State
+  const [viewMode, setViewMode] = useState('voice'); // 'voice' | 'chat'
+  const [tone, setTone] = useState('sassy'); // 'sassy' | 'sweet' | 'professional'
+  const [isVoiceMuted, setIsVoiceMuted] = useState(false);
+  const [assistantState, setAssistantState] = useState('idle'); // 'idle' | 'listening' | 'processing' | 'speaking'
+  const [interimSpeech, setInterimSpeech] = useState('');
 
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: "Hello! I am your LifeOS AI Assistant. I know your goals: to crack GATE, build CollegeX, improve fitness, and kickstart freelancing.\n\nHow can I help you optimize your schedule, plan subjects, or suggest productivity habits today?",
+      content: `Hello ${userName}! Main hoon SARA, aapki personal AI assistant. 💅\n\nMujhe aapke GATE exam, daily To-Dos, habits, fitness goals, aur routine sab ka pura pata hai. Boliye, aaj kya plan karein?`,
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -18,7 +48,46 @@ export default function AIAssistant() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [loading, setLoading] = useState(false);
+
   const messagesEndRef = useRef(null);
+  const voicePlayerRef = useRef(null);
+  const recognizerRef = useRef(null);
+
+  // Initialize Voice Player
+  useEffect(() => {
+    voicePlayerRef.current = new SaraVoicePlayer();
+    return () => {
+      if (voicePlayerRef.current) voicePlayerRef.current.stop();
+    };
+  }, []);
+
+  // Initialize Speech Recognizer
+  useEffect(() => {
+    recognizerRef.current = new SaraSpeechRecognizer(
+      (transcript, isFinal) => {
+        setInterimSpeech(transcript);
+        if (isFinal && transcript.trim()) {
+          setInterimSpeech('');
+          handleSend(transcript.trim());
+        }
+      },
+      (isListening) => {
+        if (isListening) {
+          setAssistantState('listening');
+        } else {
+          setAssistantState(prev => prev === 'listening' ? 'idle' : prev);
+        }
+      },
+      (error) => {
+        console.warn('Speech Rec Error:', error);
+        setAssistantState('idle');
+      }
+    );
+
+    return () => {
+      if (recognizerRef.current) recognizerRef.current.stop();
+    };
+  }, []);
 
   useEffect(() => {
     if (!geminiApiKey) {
@@ -34,101 +103,177 @@ export default function AIAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  const toggleMicListening = () => {
+    if (!recognizerRef.current) return;
+    if (assistantState === 'listening') {
+      recognizerRef.current.stop();
+      setAssistantState('idle');
+    } else {
+      if (voicePlayerRef.current) voicePlayerRef.current.stop();
+      recognizerRef.current.start();
+    }
+  };
+
   const handleSaveKey = (e) => {
     e.preventDefault();
     setGeminiApiKey(apiKeyInput.trim());
     setShowKeyModal(false);
   };
 
+  // Compile real-time LifeOS stats snapshot
+  const getLifeOsSnapshot = useCallback(() => {
+    let gateHours = 0;
+    let gatePyqs = 0;
+    Object.values(gateProgress || {}).forEach(p => {
+      gateHours += p.hours || 0;
+      gatePyqs += p.pyqs || 0;
+    });
+
+    const todayFitness = getFitnessTodayLog() || {};
+
+    return {
+      userName,
+      gateStats: {
+        totalHours: gateHours,
+        totalPyqs: gatePyqs,
+        subjectsCount: gateSubjects?.length || 0,
+      },
+      tasksStats: {
+        pendingCount: getPendingCount(),
+        completedTodayCount: getCompletedTodayCount(),
+        overdueCount: tasks.filter(t => t.dueDate && t.dueDate < new Date().toISOString().split('T')[0] && t.status !== 'done').length,
+      },
+      habitsStats: {
+        completedToday: getHabitsCompletedCount(),
+        totalHabits: habits?.length || 0,
+        longestStreak: getLongestStreak(),
+      },
+      fitnessStats: {
+        gymStreak: getGymStreak(),
+        water: todayFitness.waterGlasses || 0,
+        waterTarget: fitnessTargets?.waterTarget || 8,
+        sleep: todayFitness.sleepHours || 0,
+        sleepTarget: fitnessTargets?.sleepTarget || 7,
+        weight: todayFitness.weight,
+      },
+      plannerStats: {
+        todayBlocksCount: getTodayBlocks()?.length || 0,
+      },
+    };
+  }, [
+    userName, gateProgress, gateSubjects, getPendingCount, getCompletedTodayCount,
+    tasks, getHabitsCompletedCount, habits, getLongestStreak, getGymStreak,
+    getFitnessTodayLog, fitnessTargets, getTodayBlocks
+  ]);
+
   const handleSend = async (textToSend) => {
     const text = textToSend || inputText;
     if (!text.trim()) return;
 
+    // Stop ongoing speech
+    if (voicePlayerRef.current) voicePlayerRef.current.stop();
+
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setInputText('');
     setLoading(true);
+    setAssistantState('processing');
 
     const apiKey = geminiApiKey || apiKeyInput;
+    const lifeOsData = getLifeOsSnapshot();
+    const systemInstruction = generateSaraSystemContext(lifeOsData, tone);
 
     if (!apiKey) {
-      // Offline fallback rules
+      // Offline fallback
       setTimeout(() => {
-        const response = getOfflineResponse(text);
+        const response = getOfflineSaraResponse(text, lifeOsData, tone);
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
         setLoading(false);
-      }, 1000);
+        speakResponse(response);
+      }, 700);
       return;
     }
 
     try {
-      const systemContext = `You are LifeOS AI, a personal productivity assistant for a CS student preparing for GATE 2027. 
-Their goals are: Crack GATE, Build CollegeX, Start Freelancing, Improve Fitness, Complete M.Tech.
-They track: GATE study (10 subjects), daily coding (DSA+Python), fitness (gym/water/sleep), 8 habits, Pomodoro sessions.
-Give concise, actionable, motivating responses. Use bullet points and structure. Output in clear markdown format.`;
-
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: systemContext + '\n\nUser: ' + text }] }]
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${systemInstruction}\n\nUser Question: ${text}` }]
+              }
+            ]
           })
         }
       );
 
       const data = await response.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that response. Please check your network or API key.";
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 
+        "Uff Tapash, response process nahi ho paya. Ek baar network ya API key check karo!";
+
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      speakResponse(reply);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Failed to connect to AI server. Running fallback offline answer:\n\n" + getOfflineResponse(text) }]);
+      console.error('Gemini error:', err);
+      const fallback = getOfflineSaraResponse(text, lifeOsData, tone);
+      setMessages(prev => [...prev, { role: 'assistant', content: fallback }]);
+      speakResponse(fallback);
     } finally {
       setLoading(false);
     }
   };
 
-  const getOfflineResponse = (text) => {
+  const speakResponse = (replyText) => {
+    if (isVoiceMuted || !voicePlayerRef.current) {
+      setAssistantState('idle');
+      return;
+    }
+
+    voicePlayerRef.current.speak(
+      replyText,
+      () => setAssistantState('speaking'),
+      () => setAssistantState('idle'),
+      () => setAssistantState('idle')
+    );
+  };
+
+  const getOfflineSaraResponse = (text, lifeData, currentTone) => {
     const q = text.toLowerCase();
-    if (q.includes('schedule') || q.includes('routine') || q.includes('plan')) {
-      return `### 📅 Smart Daily Schedule Suggestion
-Here is an optimized routine aligned to your goals:
-*   **05:30 AM** – Wake Up & Hydrate 🌅
-*   **06:00 AM** – Exercise / Gym 🏋️ (Goal: Improve Fitness)
-*   **07:00 AM** – Study block: GATE Core Subject (e.g. DBMS) 📚
-*   **10:00 AM** – Coding Practice (DSA/Python Problems) 💻
-*   **01:00 PM** – Lunch & Rest 🥗
-*   **02:00 PM** – College Work / Projects (Build CollegeX) 🛠️
-*   **06:00 PM** – Freelancing tasks or Skills development 🚀
-*   **08:00 PM** – Dinner & Revision 📖
-*   **10:00 PM** – Wind Down & Sleep 🌙`;
+    const { gateStats, tasksStats, habitsStats, fitnessStats } = lifeData;
+
+    if (q.includes('gate') || q.includes('study') || q.includes('syllabus')) {
+      return `### 📚 GATE Prep Status & Advice
+Arre ${userName}, ab tak aapne total **${gateStats.totalHours} hours** study aur **${gateStats.totalPyqs} PYQs** solve kiye hain ${gateStats.subjectsCount} subjects me!
+
+*   **Focus Point**: DBMS, OS, aur TOC high scoring subjects hain.
+*   **Next Step**: Aaj kam se kam 15-20 PYQs solve karo bina distraction ke!`;
     }
-    if (q.includes('gate') || q.includes('study')) {
-      return `### 📚 GATE 2027 Syllabus Strategy
-Focus on high-weightage topics to maximize your efficiency:
-1.  **Algorithms & Data Structures** – 12-15 marks. Core foundation of programming.
-2.  **DBMS & Operating Systems** – 15-18 marks. Highly scoring; conceptual.
-3.  **Computer Networks** – 8-10 marks. Practice routing protocols.
-4.  **TOC & Compiler** – 10-12 marks. Clear, formula-based scoring.
-*Action Step*: Solve at least 15 PYQs today for your current study subject.`;
+
+    if (q.includes('task') || q.includes('todo') || q.includes('pending')) {
+      return `### 📋 To-Do Check-in
+Suno ${userName}, aapke paas **${tasksStats.pendingCount} pending tasks** hain aur aaj **${tasksStats.completedTodayCount} tasks** complete huye hain.
+
+${tasksStats.overdueCount > 0 ? `⚠️ **${tasksStats.overdueCount} overdue tasks** hain jo pehle khatam karne hain!` : 'Sab time par chal raha hai. Keep it up!'}`;
     }
-    if (q.includes('code') || q.includes('dsa') || q.includes('python')) {
-      return `### 💻 DSA & Python Mastery Roadmap
-To crack top roles and build CollegeX efficiently:
-*   **Daily Target**: Solve 2 standard LeetCode problems (Array/Graph/DP).
-*   **Current Stack**: Practice Python OOP syntax, script automations.
-*   **GitHub**: Commit code daily to build up your contribution graph!`;
+
+    if (q.includes('fitness') || q.includes('gym') || q.includes('water')) {
+      return `### 🏋️ Fitness Status
+*   **Gym Streak**: ${fitnessStats.gymStreak} days active streak! 🔥
+*   **Water**: ${fitnessStats.water}/${fitnessStats.waterTarget} glasses piyen.
+*   **Sleep**: ${fitnessStats.sleep}/${fitnessStats.sleepTarget} hours logged.
+Hydrate raho aur fitness goal skip mat karo!`;
     }
-    if (q.includes('freelance') || q.includes('collegex') || q.includes('project')) {
-      return `### 🚀 Project & Career Action Plan
-*   **CollegeX MVP**: Focus on user routing and schema design in DBMS. Keep it clean.
-*   **Freelance Client**: Set up a GitHub repository containing 3 portfolio templates.
-*   **Routine**: Dedicate 1 Focus Session (50 mins) every evening strictly for CollegeX build.`;
+
+    if (q.includes('roast') || q.includes('motivate')) {
+      return `Arre ${userName}! GATE 2027 me IIT jana hai ya bas sapne dekhne hain? 💅
+Aapke **${tasksStats.pendingCount} tasks** wait kar rahe hain aur screen pe timepass ho raha hai! Chalo jaldi focus mode on karo aur padhai shuru karo, IIT Bombay aise hi nahi milta!`;
     }
-    return `### ✨ LifeOS Daily Motivation
-*   "Consistency outperforms intensity in the long run."
-*   Continue checking off your habits: Coding, Study, Fitness.
-*   Log a Pomodoro focus session today to build momentum!
-*   **AI Tip**: Paste your Google Gemini API Key in settings to enable full customized conversational AI recommendations.`;
+
+    return `Suno ${userName}! Main yahan hoon aapko track par rakhne ke liye.
+Aapka GATE study, ${tasksStats.pendingCount} pending tasks, aur fitness routine ready hai. Boliye, kis cheez me help chahiye? 🌸`;
   };
 
   const handleCopy = (content, idx) => {
@@ -139,106 +284,250 @@ To crack top roles and build CollegeX efficiently:
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] page-enter">
-      {/* Top Banner with API Settings button */}
-      <div className="flex justify-between items-center pb-4 border-b border-surface-border">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Sparkles className="text-yellow-400" /> AI Productivity Assistant
-          </h1>
-          <p className="page-subtitle">Custom routines, syllabus suggestions, and goals coaching.</p>
+      {/* ── Top Header Bar ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-surface-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-500 to-amber-400 p-[1.5px] shadow-glow-primary">
+            <div className="w-full h-full rounded-2xl bg-slate-950 flex items-center justify-center overflow-hidden">
+              <img src="/sara/idle.png" alt="Sara" className="w-full h-full object-cover" />
+            </div>
+          </div>
+          <div>
+            <h1 className="page-title flex items-center gap-2 text-xl font-bold">
+              <span>SARA</span>
+              <span className="badge badge-purple text-[10px] uppercase">AI Companion</span>
+            </h1>
+            <p className="page-subtitle text-xs">Voice & Productivity Co-Pilot with full LifeOS Context</p>
+          </div>
         </div>
-        <button
-          onClick={() => {
-            setApiKeyInput(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
-            setShowKeyModal(true);
-          }}
-          className={`btn ${geminiApiKey ? 'btn-secondary' : 'btn-primary'}`}
-        >
-          <Key size={14} /> {geminiApiKey ? 'API Key Saved' : 'Add Gemini API Key'}
-        </button>
-      </div>
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto py-6 space-y-4 pr-2">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex gap-3 max-w-[85%] ${
-              msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
-            }`}
+        {/* Controls: Mode Toggle, Tone, Mute, API Key */}
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Mode switch */}
+          <div className="flex items-center bg-surface-secondary border border-surface-border rounded-xl p-0.5 text-xs">
+            <button
+              onClick={() => setViewMode('voice')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                viewMode === 'voice' ? 'bg-primary-600 text-white shadow-sm font-semibold' : 'text-fg-3 hover:text-fg'
+              }`}
+            >
+              <Radio size={13} /> Voice Mode
+            </button>
+            <button
+              onClick={() => setViewMode('chat')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                viewMode === 'chat' ? 'bg-primary-600 text-white shadow-sm font-semibold' : 'text-fg-3 hover:text-fg'
+              }`}
+            >
+              <MessageSquare size={13} /> Chat Mode
+            </button>
+          </div>
+
+          {/* Tone Selector */}
+          <select
+            value={tone}
+            onChange={e => setTone(e.target.value)}
+            className="input py-1.5 px-2.5 text-xs bg-surface-secondary border-surface-border cursor-pointer"
+            title="Sara's Personality Tone"
           >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              msg.role === 'user' ? 'bg-primary-600 text-white' : 'bg-surface-secondary border border-surface-border text-primary-400'
-            }`}>
-              {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+            {SARA_TONES.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.emoji} {t.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Mute/Unmute */}
+          <button
+            onClick={() => {
+              if (!isVoiceMuted && voicePlayerRef.current) {
+                voicePlayerRef.current.stop();
+                setAssistantState('idle');
+              }
+              setIsVoiceMuted(!isVoiceMuted);
+            }}
+            className={`btn-icon p-2 rounded-xl border border-surface-border ${
+              isVoiceMuted ? 'text-red-400 bg-red-500/10' : 'text-fg-2 hover:text-fg bg-surface-secondary'
+            }`}
+            title={isVoiceMuted ? 'Unmute Sara Voice' : 'Mute Sara Voice'}
+          >
+            {isVoiceMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </button>
+
+          {/* API Key Modal Button */}
+          <button
+            onClick={() => {
+              setApiKeyInput(geminiApiKey || import.meta.env.VITE_GEMINI_API_KEY || '');
+              setShowKeyModal(true);
+            }}
+            className={`btn py-1.5 px-3 text-xs ${geminiApiKey ? 'btn-secondary' : 'btn-primary'}`}
+          >
+            <Key size={13} /> {geminiApiKey ? 'Key Active' : 'Add Key'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Main View (Voice Mode vs Chat Mode) ── */}
+      <div className="flex-1 flex flex-col md:flex-row gap-6 pt-4 min-h-0 overflow-hidden">
+        {/* VOICE MODE: SARA VISUALIZER STAGE */}
+        {viewMode === 'voice' ? (
+          <div className="flex-1 flex flex-col items-center justify-between p-6 rounded-3xl border border-surface-border bg-gradient-to-b from-surface-primary to-surface-secondary/40 relative overflow-hidden shadow-2xl">
+            {/* Visualizer center */}
+            <div className="flex-1 flex flex-col items-center justify-center w-full">
+              <SaraVisualizer state={assistantState} />
+
+              {/* Interim voice speech banner */}
+              {interimSpeech && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 px-4 py-2 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-purple-200 text-xs text-center max-w-md backdrop-blur-md"
+                >
+                  <span className="font-semibold text-purple-400">Listening:</span> "{interimSpeech}"
+                </motion.div>
+              )}
             </div>
 
-            <div className={`p-4 rounded-2xl border relative group ${
-              msg.role === 'user'
-                ? 'bg-primary-600/10 border-primary-500/20 text-fg'
-                : 'bg-surface-secondary/40 border-surface-border text-fg'
-            }`}>
-              <button
-                onClick={() => handleCopy(msg.content, idx)}
-                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-fg-3 hover:text-fg p-1"
-                title="Copy response"
-              >
-                {copiedId === idx ? <Check size={12} className="text-accent-400" /> : <Copy size={12} />}
-              </button>
-              <div className="prose ProseMirror prose-sm max-w-none text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                {msg.content.split('\n').map((line, lIdx) => {
-                  if (line.startsWith('###')) return <h3 key={lIdx} className="text-sm font-bold mt-3 mb-1 text-primary-400">{line.replace('###', '')}</h3>;
-                  if (line.startsWith('*')) return <li key={lIdx} className="ml-3 my-0.5">{line.replace('*', '').trim()}</li>;
-                  return <p key={lIdx} className="mb-1">{line}</p>;
-                })}
+            {/* Voice Controls & Mic Button */}
+            <div className="w-full flex flex-col items-center gap-4 z-20">
+              <div className="flex items-center gap-4">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={toggleMicListening}
+                  className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 ${
+                    assistantState === 'listening'
+                      ? 'bg-gradient-to-tr from-red-500 to-rose-600 shadow-[0_0_25px_rgba(244,63,94,0.6)] animate-pulse'
+                      : 'bg-gradient-to-tr from-purple-600 to-pink-500 shadow-[0_0_25px_rgba(168,85,247,0.5)]'
+                  }`}
+                  title={assistantState === 'listening' ? 'Stop Listening' : 'Tap to Speak to Sara'}
+                >
+                  {assistantState === 'listening' ? <MicOff size={26} /> : <Mic size={26} />}
+                </motion.button>
               </div>
+              <p className="text-[11px] text-fg-3">
+                {assistantState === 'listening' 
+                  ? 'Bolye, SARA sun rahi hai... (Tap again to stop)' 
+                  : 'Tap Mic to speak, or use prompt chips below'}
+              </p>
             </div>
           </div>
-        ))}
+        ) : null}
 
-        {loading && (
-          <div className="flex gap-3 max-w-[85%] mr-auto">
-            <div className="w-8 h-8 rounded-full bg-surface-secondary border border-surface-border text-primary-400 flex items-center justify-center">
-              <Bot size={14} />
-            </div>
-            <div className="p-4 rounded-2xl bg-surface-secondary/40 border border-surface-border flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
+        {/* CHAT STREAM (Shown beside visualizer on large screens, or full width in chat mode) */}
+        <div className={`flex flex-col h-full rounded-2xl border border-surface-border bg-surface-primary/60 p-4 ${
+          viewMode === 'voice' ? 'hidden lg:flex w-[420px]' : 'flex-1'
+        }`}>
+          <div className="flex items-center justify-between pb-3 border-b border-surface-border">
+            <span className="text-xs font-semibold text-fg uppercase tracking-wider flex items-center gap-1.5">
+              <Bot size={14} className="text-primary-400" /> SARA Conversation
+            </span>
+            <span className="text-[10px] text-fg-3">{messages.length} messages</span>
           </div>
-        )}
-        <div ref={messagesEndRef} />
+
+          {/* Messages scroll list */}
+          <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-1">
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-2.5 max-w-[90%] ${
+                  msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                }`}
+              >
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs overflow-hidden ${
+                  msg.role === 'user' ? 'bg-primary-600 text-white' : 'bg-purple-900/60 border border-purple-500/30'
+                }`}>
+                  {msg.role === 'user' ? <User size={13} /> : <img src="/sara/idle.png" alt="Sara" className="w-full h-full object-cover" />}
+                </div>
+
+                <div className={`p-3 rounded-2xl border relative group text-xs ${
+                  msg.role === 'user'
+                    ? 'bg-primary-600/15 border-primary-500/25 text-fg'
+                    : 'bg-surface-secondary/60 border-surface-border text-fg'
+                }`}>
+                  <button
+                    onClick={() => handleCopy(msg.content, idx)}
+                    className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-fg-3 hover:text-fg p-1"
+                    title="Copy"
+                  >
+                    {copiedId === idx ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                  </button>
+                  <div className="prose ProseMirror prose-sm max-w-none text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                    {msg.content.split('\n').map((line, lIdx) => {
+                      if (line.startsWith('###')) return <h4 key={lIdx} className="text-xs font-bold mt-2 mb-1 text-primary-400">{line.replace('###', '')}</h4>;
+                      if (line.startsWith('*')) return <li key={lIdx} className="ml-2.5 my-0.5">{line.replace('*', '').trim()}</li>;
+                      return <p key={lIdx} className="mb-1">{line}</p>;
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex gap-2.5 max-w-[90%] mr-auto">
+                <div className="w-7 h-7 rounded-full bg-purple-900/60 border border-purple-500/30 flex items-center justify-center overflow-hidden">
+                  <img src="/sara/thinking.png" alt="Thinking" className="w-full h-full object-cover animate-pulse" />
+                </div>
+                <div className="p-3 rounded-2xl bg-surface-secondary/40 border border-surface-border flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Quick Input within Chat box */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex gap-2 pt-2 border-t border-surface-border"
+          >
+            <input
+              value={inputText}
+              onChange={e => setInputText(e.target.value)}
+              placeholder={`Message Sara (${tone})...`}
+              className="input flex-1 py-2 text-xs"
+            />
+            <button type="submit" className="btn-primary py-2 px-3">
+              <Send size={14} />
+            </button>
+          </form>
+        </div>
       </div>
 
-      {/* Suggested Prompt Pills */}
-      <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-none">
-        <button onClick={() => handleSend("Generate today's schedule")} className="tag text-[10px] font-bold py-1.5 px-3">📅 Suggested Schedule</button>
-        <button onClick={() => handleSend("Create GATE study plan")} className="tag text-[10px] font-bold py-1.5 px-3">📚 GATE Study Plan</button>
-        <button onClick={() => handleSend("Suggest coding improvements")} className="tag text-[10px] font-bold py-1.5 px-3">💻 Coding Advice</button>
-        <button onClick={() => handleSend("Suggest habit improvements")} className="tag text-[10px] font-bold py-1.5 px-3">✨ Habit Tips</button>
-      </div>
-
-      {/* Chat Input */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSend();
-        }}
-        className="flex gap-2 border-t border-surface-border pt-4"
-      >
-        <input
-          value={inputText}
-          onChange={e => setInputText(e.target.value)}
-          placeholder="Ask AI for study schedule, DSA plans, or motivation..."
-          className="input flex-1 py-3 text-xs"
-        />
-        <button type="submit" className="btn-primary p-3">
-          <Send size={16} />
+      {/* ── Suggested LifeOS Prompt Pills ── */}
+      <div className="flex gap-2 overflow-x-auto pt-3 pb-1 scrollbar-none">
+        <button 
+          onClick={() => handleSend("Sara, mera GATE study status check karo aur strategy batao")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
+        >
+          📚 GATE Prep Status
         </button>
-      </form>
+        <button 
+          onClick={() => handleSend("Mera aaj ka To-Do aur routine check karo")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
+        >
+          📋 Check Pending Tasks
+        </button>
+        <button 
+          onClick={() => handleSend("Mera fitness goal kaisa chal raha hai?") 
+          } className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40"
+        >
+          🏋️ Fitness Goals Review
+        </button>
+        <button 
+          onClick={() => handleSend("Sara, mujhe thoda roast karo aur motivate karo!")} 
+          className="tag text-[10px] font-semibold py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap hover:border-purple-500/40 text-pink-400 border-pink-500/30"
+        >
+          🔥 Roast & Motivate Me!
+        </button>
+      </div>
 
-      {/* Key Setup Modal */}
+      {/* ── Gemini Key Setup Modal ── */}
       <AnimatePresence>
         {showKeyModal && (
           <div className="modal-overlay" onClick={() => setShowKeyModal(false)}>
@@ -250,7 +539,9 @@ To crack top roles and build CollegeX efficiently:
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-fg">Gemini API Configuration</h3>
+                <h3 className="text-lg font-bold text-fg flex items-center gap-2">
+                  <Key size={18} className="text-primary-400" /> Gemini API Key Setup
+                </h3>
                 <button onClick={() => setShowKeyModal(false)} className="btn-icon text-fg-3 hover:text-fg">
                   <X size={18} />
                 </button>
@@ -258,7 +549,7 @@ To crack top roles and build CollegeX efficiently:
 
               <form onSubmit={handleSaveKey} className="space-y-4">
                 <p className="text-xs text-fg-3 leading-relaxed">
-                  Enter your Google Gemini API key to enable tailored AI suggestions. Your key is stored locally in your browser and never sent to our servers.
+                  Enter your Google Gemini API key to enable high-intelligence conversational responses from SARA. Your key is stored safely in your browser localStorage.
                 </p>
                 <div>
                   <label className="text-xs font-semibold text-fg-2 uppercase mb-1 block">API Key</label>
@@ -275,7 +566,7 @@ To crack top roles and build CollegeX efficiently:
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg"
-                      title={showApiKey ? "Hide API Key" : "Show API Key"}
+                      title={showApiKey ? "Hide Key" : "Show Key"}
                     >
                       {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
